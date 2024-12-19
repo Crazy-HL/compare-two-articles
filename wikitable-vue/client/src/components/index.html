@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>鼠标框选功能</title>
+	</head>
+	<body>
+		<h1>选择下面的文本或元素</h1>
+		<div>
+			<h1>sdjsahjdsajd</h1>
+			<div>s9090909</div>
+		</div>
+		<p>这是一段可选择的文本，您可以尝试框选其中的内容。</p>
+		<p>框选之后，您将看到返回的内容。</p>
+
+		<div>
+			<img src="https://via.placeholder.com/150" alt="示例图片" />
+			<p>图片上方的文字和下面的输入框可以被选择。</p>
+		</div>
+
+		<input type="text" value="这是一个输入框" />
+
+		<div id="output"></div>
+
+		<script>
+			// 防抖函数
+			function debounce(fn, time = 500) {
+				let timeout = null; // 创建一个标记用来存放定时器的返回值
+				return function () {
+					clearTimeout(timeout); // 每当触发时，把前一个定时器 clear 掉
+					timeout = setTimeout(() => {
+						// 创建一个新的定时器，并赋值给 timeout
+						fn.apply(this, arguments);
+					}, time);
+				};
+			}
+
+			// 获取选择的内容
+			const getSelectContent = () => {
+				const selection = window.getSelection();
+				if (selection) {
+					// 判断是否有选中的内容
+					if (selection.isCollapsed) {
+						// 如果没有选中内容，则返回选中的文本
+						return selection.toString().trim().length
+							? {
+									type: "text",
+									content: selection.toString().trim()
+							  }
+							: null;
+					}
+
+					// 获取选择的范围
+					const range = selection.getRangeAt(0);
+					const rangeClone = range.cloneContents();
+
+					// 判断选择内容是否包含节点
+					if (rangeClone.childElementCount > 0) {
+						const container = document.createElement("div");
+						container.appendChild(rangeClone);
+
+						if (!selection.toString().trim().length) {
+							// 判断是否包含特殊元素（如 iframe, img 等）
+							const hasSpNode = getSpNode(container);
+							return hasSpNode
+								? {
+										type: "html",
+										content: container.innerHTML
+								  }
+								: null;
+						}
+						return {
+							type: "html",
+							content: container.innerHTML
+						};
+					} else {
+						return selection.toString().trim().length
+							? {
+									type: "text",
+									content: selection.toString().trim()
+							  }
+							: null;
+					}
+				} else {
+					return null;
+				}
+			};
+
+			// 判断是否包含特殊元素
+			const getSpNode = parent => {
+				const nodeNameList = ["iframe", "svg", "img", "audio", "video"];
+				const inpList = ["input", "textarea", "select"];
+				return Array.from(parent.children).some(node => {
+					if (nodeNameList.includes(node.nodeName.toLowerCase())) return true;
+					if (
+						inpList.includes(node.nodeName.toLowerCase()) &&
+						node.value.trim().length
+					)
+						return true;
+					if (node.children) {
+						return getSpNode(node);
+					}
+					return false;
+				});
+			};
+
+			// 获取选择的内容并展示
+			const selectionChangeFun = debounce(() => {
+				const selectContent = getSelectContent();
+				console.log("选中的内容:", selectContent);
+				const output = document.getElementById("output");
+				if (selectContent) {
+					if (selectContent.type === "text") {
+						output.innerHTML = `<strong>选中的文本内容：</strong><br>${selectContent.content}`;
+					} else if (selectContent.type === "html") {
+						output.innerHTML = `<strong>选中的HTML内容：</strong><br>${selectContent.content}`;
+					}
+				} else {
+					output.innerHTML = "没有选择内容";
+				}
+			});
+
+			// 添加事件监听
+			let selectionchangeMouseTrack = false;
+
+			// 鼠标按下事件
+			document.addEventListener("mousedown", () => {
+				selectionchangeMouseTrack = true;
+			});
+
+			// 鼠标抬起事件
+			document.addEventListener(
+				"mouseup",
+				debounce(() => {
+					selectionChangeFun();
+				}, 100)
+			);
+
+			// 选择区域发生变化时
+			document.addEventListener(
+				"selectionchange",
+				debounce(() => {
+					if (selectionchangeMouseTrack) return;
+					selectionChangeFun();
+				})
+			);
+
+			// 双击事件
+			document.addEventListener("dblclick", () => {
+				selectionChangeFun();
+			});
+
+			// 右键事件
+			document.addEventListener(
+				"contextmenu",
+				debounce(() => {
+					selectionChangeFun();
+				})
+			);
+		</script>
+	</body>
+</html>

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>index</title>
+	</head>
+	<body>
+		<h2>你好啊</h2>
+		<button onclick="getNews()">获取头条数据</button>
+		<script type="text/javascript">
+			async function getNews() {
+				const url = "http://127.0.0.1:8081/proxy/wiki/%E5%94%90%E6%9C%9D";
+				let result = await fetch(url);
+				// let data = await result.json();
+				// console.log(data);
+				console.log(result);
+			}
+		</script>
+	</body>
+</html>
