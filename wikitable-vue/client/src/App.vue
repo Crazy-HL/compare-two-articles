@@ -1,16 +1,36 @@
-<script setup lang="js">
-	import news from "./components/news.vue";
-	import news2 from "./components/news2.vue";
-	import history from './components/history.vue';
-	import text from "./components/text.vue";
+<script>
+	import history from "./components/history.vue";
 	import mouse from "./components/mouse.vue";
+	import general from "./components/general.vue";
+	export default {
+		name: "App",
+		components: {
+			history,
+			mouse,
+			general
+		},
+		mounted() {
+			this.getData();
+		},
+		methods: {
+			getData() {
+				let self = this;
+				api.get("data", { papername: "rmap1" }, data => {
+					Data = data;
+					store.state.loaddata = Math.random();
+				});
+				api.get("", {}, data => {
+					console.log("@@@", data);
+				});
+			}
+		}
+	};
 </script>
 
 <template>
-	<!-- <news2 /> -->
 	<history></history>
-	<!-- <text></text> -->
 	<!-- <mouse></mouse> -->
+	<!-- <general></general> -->
 </template>
 
 <style scoped></style>
