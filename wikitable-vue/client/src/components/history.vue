@@ -48,7 +48,7 @@
 		const src2 = "https://zh.wikipedia.org/wiki/%E5%94%90%E6%9C%9D";
 		// 获取并加载内容
 		await showHtml(src1, div3Content);
-		// await showHtml(src2, div1Content);
+		await showHtml(src2, div1Content);
 
 		// 使用 nextTick 确保 v-html 渲染完成后再启动 MouseSelection
 		nextTick(() => {

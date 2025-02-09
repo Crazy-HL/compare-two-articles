@@ -28,9 +28,9 @@
 </script>
 
 <template>
-	<history></history>
+	<!-- <history></history> -->
 	<!-- <mouse></mouse> -->
-	<!-- <general></general> -->
+	<general></general>
 </template>
 
 <style scoped></style>

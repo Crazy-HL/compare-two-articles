@@ -1,4 +1,3 @@
-<!-- Div1.vue -->
 <template>
 	<div class="div0 selectContent1" id="div1">
 		<div v-html="div1Content" class="showHtml"></div>
@@ -6,40 +5,56 @@
 </template>
 
 <script setup>
-	import { ref, onMounted, nextTick } from "vue";
+	import { ref, onMounted, onUnmounted, nextTick } from "vue";
 	import MouseSelection from "@/js/mouse_selection";
+	import bus from "@/js/eventBus.js";
 
-	// 用于存储 HTML 内容
 	const div1Content = ref("");
 
-	// 页面初始化时加载内容
 	onMounted(async () => {
 		const src = "https://baike.baidu.com/item/%E5%94%90%E6%9C%9D/53699";
 		await showHtml(src, div1Content);
-		// 使用 nextTick 确保 v-html 渲染完成后再启动 MouseSelection
+
 		nextTick(() => {
 			MouseSelection.start({
-				rangeSelector: ".selectContent1" // 传递范围选择器，支持向下检索
+				rangeSelector: ".selectContent1",
+				customId: "div1"
 			});
 		});
+
+		// 只绑定 div1 的 mouseup 事件
+		document
+			.querySelector("#div1")
+			.addEventListener("mouseup", handleSelection);
 	});
 
-	// 获取并展示内容
+	onUnmounted(() => {
+		// 解绑事件，防止内存泄漏
+		document
+			.querySelector("#div1")
+			.removeEventListener("mouseup", handleSelection);
+	});
+
+	function handleSelection() {
+		MouseSelection.selectionChangeFun(selectContent => {
+			if (selectContent) {
+				console.log("选中的内容来自 Div1:", selectContent);
+				bus.emit("div1Event", selectContent);
+			}
+		}, "div1");
+	}
+
 	async function showHtml(src, area) {
 		try {
 			api.get("html", { url: src }, data => {
 				area.value = htmlToDom(data);
 			});
-			// const res = await axios.get(src);
-			// const html = res.data;
-			// area.value = htmlToDom(html);
 		} catch (err) {
 			console.log("请求失败：", err.message);
-			area.value = ""; // 如果请求失败，返回空字符串
+			area.value = "";
 		}
 	}
 
-	// 将 HTML 内容转化为 DOM
 	function htmlToDom(html) {
 		const parser = new DOMParser();
 		const doc = parser.parseFromString(html, "text/html");
@@ -50,9 +65,9 @@
 <style scoped>
 	#div1 {
 		width: 30%;
-		max-width: 100%; /* 限制宽度不超过父容器的宽度 */
-		max-height: 100%; /* 限制高度不超过父容器的高度 */
-		overflow: auto; /* 如果内容超出，添加滚动条 */
+		max-width: 100%;
+		max-height: 100%;
+		overflow: auto;
 	}
 
 	.showHtml {
