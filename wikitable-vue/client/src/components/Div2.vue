@@ -12,6 +12,7 @@
 					<IO width="240px" height="290px" :placeholder="selectText3"></IO>
 				</div>
 			</div>
+			<button @click="compareTexts">对比文章</button>
 		</div>
 	</div>
 </template>
@@ -28,13 +29,11 @@
 	let offDiv1, offDiv3;
 
 	onMounted(() => {
-		// 订阅 div1 和 div3 的事件
 		offDiv1 = bus.on("div1Event", data => handleSelection(data, "div1"));
 		offDiv3 = bus.on("div3Event", data => handleSelection(data, "div3"));
 	});
 
 	onUnmounted(() => {
-		// 取消订阅，避免内存泄漏
 		offDiv1();
 		offDiv3();
 	});
@@ -48,11 +47,48 @@
 		}
 	}
 
-	// 仅获取选中的纯文本内容，去除 HTML 标签
 	function getPlainTextFromSelection(htmlContent) {
 		const container = document.createElement("div");
 		container.innerHTML = htmlContent;
 		return container.innerText || container.textContent || "";
+	}
+
+	// async function compareTexts() {
+	// 	try {
+	// 		api.get(
+	// 			"gpt_compare",
+	// 			{ text1: selectText2.value, text2: selectText3.value },
+	// 			data => {
+	// 				if (data) {
+	// 					selectText1.value = data.result;
+	// 				} else {
+	// 					console.error("对比失败:", data.error);
+	// 				}
+	// 				console.log("@@@111", data);
+	// 			}
+	// 		);
+	// 	} catch (error) {
+	// 		console.error("请求失败:", error);
+	// 	}
+	// }
+
+	async function compareTexts() {
+		try {
+			api.post(
+				"gpt_compare",
+				{ text1: selectText2.value, text2: selectText3.value },
+				data => {
+					if (data) {
+						selectText1.value = data.result;
+					} else {
+						console.error("对比失败:", data.error);
+					}
+					console.log("@@@222", data);
+				}
+			);
+		} catch (error) {
+			console.error("请求失败:", error);
+		}
 	}
 </script>
 

@@ -1,8 +1,6 @@
-
 import axios from 'axios';
 
 var address = "http://localhost:8888/"
-
 
 function filterNull(o) {
     for (var key in o) {
@@ -21,35 +19,32 @@ function filterNull(o) {
 }
 
 function apiAxios(type, url, params, callback) {
-    if (type == 'GET') {
-        // console.log(params)
+    if (type === 'GET') {
         axios.get(address + url, { 'params': params })
             .then(response => {
-                // console.log('@',response.data)
-                callback(response.data) // 获取数据
+                callback(response.data); // 获取数据
             })
             .catch(error => {
-                console.error('There was an error for get!', error);
+                console.error('There was an error for GET request!', error);
             });
     }
 
-    if (type == 'POST') {
-        axios.post(address + url, { 'params': params })
+    if (type === 'POST') {
+        axios.post(address + url, params, { headers: { 'Content-Type': 'application/json' } })
             .then(response => {
-                callback(response.data) // 获取数据
+                callback(response.data); // 获取数据
             })
             .catch(error => {
-                console.error('There was an error for get!', error);
+                console.error('There was an error for POST request!', error);
             });
     }
-
 }
 
 export default {
     get: function (url, params, callback) {
-        return apiAxios('GET', url, params, callback)
+        return apiAxios('GET', url, params, callback);
     },
     post: function (url, params, callback) {
-        return apiAxios('POST', url, params, callback)
+        return apiAxios('POST', url, params, callback);
     }
 }
