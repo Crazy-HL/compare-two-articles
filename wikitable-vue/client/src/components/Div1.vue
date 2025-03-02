@@ -12,7 +12,7 @@
 	const div1Content = ref("");
 
 	onMounted(async () => {
-		const src = "https://baike.baidu.com/item/%E5%94%90%E6%9C%9D/53699";
+		const src = "https://en.wikipedia.org/wiki/LeBron_James";
 		await showHtml(src, div1Content);
 
 		nextTick(() => {
@@ -64,7 +64,7 @@
 
 <style scoped>
 	#div1 {
-		width: 30%;
+		width: 55%;
 		max-width: 100%;
 		max-height: 100%;
 		overflow: auto;

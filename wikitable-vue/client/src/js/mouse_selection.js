@@ -1,3 +1,4 @@
+import HighlightText from './highlight';  // 导入高亮工具包
 const MouseSelection = {
   debounce(fn, time = 500) {
     let timeout = null;
@@ -100,6 +101,7 @@ const MouseSelection = {
         if (selectContent) {
           // 返回选中的内容，这里可以处理选中的内容
           console.log(`选中的内容来自 ${customId}:`, selectContent);
+          HighlightText.highlightSelection(); // 调用高亮工具包中的方法进行高亮
         } else {
           console.log("没有选择内容");
         }

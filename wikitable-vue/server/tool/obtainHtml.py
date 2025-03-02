@@ -24,6 +24,9 @@ def obtain_html(url):
             base_url = url  # 基础 URL 即输入的 URL，用于生成完整的资源路径
             html_content = update_resource_paths(html_content, base_url)
             
+            # 进一步处理内嵌的 CSS 和 JavaScript 文件路径
+            html_content = update_inline_styles_and_scripts(html_content, base_url)
+            
             return html_content
         else:
             print(f"Error: Unable to fetch the page, status code: {response.status_code}")
@@ -55,6 +58,15 @@ def update_resource_paths(html_content, base_url):
     html_content = re.sub(r'<script [^>]*src=["\']([^"\']+)["\']', 
                           lambda match: update_url(match, base_url), html_content)
     
+    return html_content
+
+def update_inline_styles_and_scripts(html_content, base_url):
+    """
+    更新 HTML 中的内联 CSS 和 JavaScript 文件路径
+    """
+    # 如果 HTML 中有内联的 <style> 或 <script>，你可能需要进一步修复其中引用的相对路径
+    html_content = re.sub(r'url\(["\']?([^"\']+)["\']?\)', 
+                          lambda match: 'url("' + urljoin(base_url, match.group(1)) + '")', html_content)
     return html_content
 
 def update_url(match, base_url):

@@ -1,0 +1,69 @@
+{
+    "name": "major claim",
+    "content": "土耳其航空航天工业公司一座工厂遭到恐怖袭击，已造成5人死亡，22人受伤",
+    "children": [
+        {
+            "name": "claim",
+            "attitude": "y",
+            "content": "美国白宫和欧盟方面对此表示‘强烈谴责’",
+            "children": [
+                {
+                    "name": "premise lvl1",
+                    "attitude": "y",
+                    "content": "白宫国家安全委员会战略沟通协调员约翰·柯比表示哀悼并对暴力行为表示谴责",
+                    "children": [
+                        {
+                            "name": "premise lvl2",
+                            "content": "土耳其政府正在调查这一事件",
+                            "attitude": "y"
+                        },
+                        {
+                            "name": "premise lvl2",
+                            "content": "尚不清楚袭击动机和幕后主使",
+                            "attitude": "n"
+                        }
+                    ]
+                },
+                {
+                    "name": "premise lvl1",
+                    "attitude": "y",
+                    "content": "欧盟外交与安全政策高级代表博雷利在社交平台谴责恐袭事件",
+                    "children": [
+                        {
+                            "name": "premise lvl2",
+                            "content": "欧盟与土耳其团结一致",
+                            "attitude": "y"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "claim",
+            "content": "土耳其国防部长居莱尔称库尔德工人党对土耳其航空航天工业公司实施了恐怖袭击",
+            "attitude": "n",
+            "children": [
+                {
+                    "name": "premise lvl1",
+                    "content": "土军方决不会停止追捕库尔德工人党武装人员",
+                    "attitude": "n"
+                },
+                {
+                    "name": "premise lvl1",
+                    "content": "库尔德工人党尚未对这一事件做出回应",
+                    "attitude": "n"
+                }
+            ]
+        },
+        {
+            "name": "premise lvl1",
+            "content": "袭击发生时恐怖分子与工厂保安交火，部分恐怖分子进入大楼",
+            "attitude": "n"
+        },
+        {
+            "name": "premise lvl1",
+            "content": "土耳其航空航天工业公司是国有大型国防企业",
+            "attitude": "n"
+        }
+    ]
+}

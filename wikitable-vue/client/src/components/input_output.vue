@@ -20,7 +20,7 @@
 		},
 		height: {
 			type: [String, Number],
-			default: "300px" // 默认最大高度为 300px
+			default: "150px" // 默认高度为 150px
 		},
 		placeholder: {
 			type: String,
@@ -32,10 +32,10 @@
 	const inputText = ref(""); // 绑定文本框的值
 	const textarea = ref(null); // 获取 textarea 的引用
 
-	// 计算样式对象，支持传入的宽度和最大高度
+	// 计算样式对象，支持传入的宽度和高度
 	const textareaStyles = computed(() => ({
 		width: props.width, // 根据传入的宽度设置
-		minHeight: props.height // 设置最小高度
+		height: props.height // 根据传入的高度设置
 	}));
 
 	// 自动调整文本框的高度
@@ -71,7 +71,6 @@
 <style scoped>
 	.textarea-container {
 		width: 100%;
-		max-width: 500px; /* 最大宽度 */
 	}
 
 	textarea {
@@ -80,7 +79,8 @@
 		font-size: 16px;
 		line-height: 1.5;
 		border: 1px solid #ccc;
-		border-radius: 4px;
+		border-radius: 8px;
 		resize: none; /* 禁用手动调整大小 */
+		background-color: #fff;
 	}
 </style>

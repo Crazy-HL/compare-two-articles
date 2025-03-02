@@ -12,7 +12,7 @@
 	const div3Content = ref("");
 
 	onMounted(async () => {
-		const src = "https://baike.baidu.com/item/%E5%94%90%E6%9C%9D/53699";
+		const src = "https://en.wikipedia.org/wiki/Jimmer_Fredette";
 		await showHtml(src, div3Content);
 
 		nextTick(() => {
@@ -22,14 +22,12 @@
 			});
 		});
 
-		// 只对 div3 绑定 mouseup 事件
 		document
 			.querySelector("#div3")
 			.addEventListener("mouseup", handleSelection);
 	});
 
 	onUnmounted(() => {
-		// 解绑事件，防止内存泄漏
 		document
 			.querySelector("#div3")
 			.removeEventListener("mouseup", handleSelection);
@@ -64,7 +62,7 @@
 
 <style scoped>
 	#div3 {
-		width: 30%;
+		width: 55%;
 		max-width: 100%;
 		max-height: 100%;
 		overflow: auto;
