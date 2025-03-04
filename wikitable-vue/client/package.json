@@ -15,7 +15,8 @@
     "jquery": "^3.7.1",
     "pdfvuer": "^2.0.1",
     "vue": "^3.2.13",
-    "vuex": "^4.0.2"
+    "vuex": "^4.0.2",
+    "wikimedia-page-library": "^9.4.2"
   },
   "devDependencies": {
     "@babel/core": "^7.12.16",

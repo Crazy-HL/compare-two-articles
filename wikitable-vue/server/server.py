@@ -3,6 +3,7 @@ import tornado.ioloop
 import tornado.web
 import json
 from openai import OpenAI
+from tool.obtainHtml import obtain_html
 from tool.chart_formats import (
     get_bar_chart_format,
     get_pie_chart_format,
@@ -133,43 +134,6 @@ class GPTAskHandler(tornado.web.RequestHandler):
                 "message": "提问时出错"
             }))
 
-class RecommendVisualizationHandler(tornado.web.RequestHandler):
-    def set_default_headers(self):
-        self.set_header("Access-Control-Allow-Origin", "*")
-        self.set_header("Access-Control-Allow-Methods", "POST, OPTIONS")
-        self.set_header("Access-Control-Allow-Headers", "Content-Type")
-
-    def options(self):
-        self.set_status(204)
-        self.finish()
-
-    def post(self):
-        try:
-            data = json.loads(self.request.body)
-            json_data = data.get("data")
-            
-            # 构造问题，让 AI 推荐可视化类型
-            input_text = (
-                f"以下是一组数据：\n{json.dumps(json_data, indent=2)}\n"
-                "请根据数据特征推荐一种合适的可视化类型。"
-                "可选的可视化类型包括：柱状图（bar）、折线图（line）、饼图（pie）、散点图（scatter）。"
-                "只需返回一个单词，例如 'bar'、'line'、'pie' 或 'scatter'。"
-            )
-            
-            # 调用 AI 接口获取推荐结果
-            visualization_type = chat(input_text).strip().lower()
-            
-            # 返回结果
-            self.write(json.dumps({
-                "data": json_data,
-                "visualization_type": visualization_type
-            }))
-        except Exception as e:
-            self.write(json.dumps({
-                "error": str(e),
-                "message": "推荐可视化类型时出错"
-            }))
-
 class ProcessTextHandler(tornado.web.RequestHandler):
     def set_default_headers(self):
         self.set_header("Access-Control-Allow-Origin", "*")
@@ -185,7 +149,7 @@ class ProcessTextHandler(tornado.web.RequestHandler):
             data = json.loads(self.request.body)
             text = data.get("text")
 
-            # 判断数据类型
+            # 判断文本类型
             data_type = chat(f"""
                             将以下内容'{text}'按照以下三个类别进行分类，同时判断逻辑为先判断该内容中是否有数据可以进行可视化，如果有则不考虑下方的非可视化数据（Non-Visual Data）这一类别，否则则最后考虑这一类别：
                             1、段落数据（Paragraph Data）：指在文本段落中散布的、可以用图表形式表现的数据信息，如统计数字、比例、趋势描述等。这些数据通常以自然语言的形式出现，但包含具体的数值或可量化的信息。
@@ -268,7 +232,10 @@ class ProcessTextHandler(tornado.web.RequestHandler):
             # 提取数据并转换成标准 JSON 格式
             json_data = chat(f"""
             将{text}可视化为{chart_classification}所需的数据提取出来，按照下面举例的 JSON 格式输出：{json_format}
-            预期输出: 你的响应应该是一个由花括号包裹的 JSON 格式的数据，该数据要符合规范（例如：1、不要添加\减少括号或逗号等；2、属性值要正确等；3、不要添加任何额外的解释或理由），同时花括号外也不带任何额外的解释或理由，同时数据中的非数值应该被替换为0（例如null、undefind等）。
+            预期输出: 你的响应应该是一个由花括号包裹的 JSON 格式的数据，该数据要符合规范
+            （例如：1、不要添加\减少括号或逗号等；
+            2、属性值要正确等；3、不要添加任何额外的解释或理由），
+            同时花括号外也不带任何额外的解释或理由，同时数据中的非数值应该被替换为0（例如null、undefind等）。
             """)
             print("###:",json_data)
             # 调用函数提取 JSON 数据
@@ -314,7 +281,6 @@ def make_app():
         (r"/html", HtmlHandler),
         (r"/gpt_compare", GPTCompareHandler),  # 对比文章接口
         (r"/gpt_ask", GPTAskHandler),  # 提问接口
-        (r"/recommend_visualization", RecommendVisualizationHandler),  # 可视化推荐接口
         (r"/process_text", ProcessTextHandler),  # 新增的处理文章内容接口
     ], debug=True)
 
