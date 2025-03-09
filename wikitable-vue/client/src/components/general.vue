@@ -19,14 +19,14 @@
 		align-items: flex-start;
 		height: 100vh;
 		width: 100%;
-		padding: 10px; /* 增加内边距 */
+		padding: 5px; /* 增加内边距 */
 		background-color: #f9f9f9; /* 背景色 */
 		overflow: hidden; /* 确保内容不会超出根容器 */
 	}
 
 	.div {
 		flex: 1;
-		margin: 0 5px; /* 增加间距 */
+		margin: 0 1px; /* 增加间距 */
 		padding: 0px; /* 内边距 */
 		background-color: #ffffff; /* 白色背景 */
 		border: 1px solid #e0e0e0; /* 更柔和的边框颜色 */

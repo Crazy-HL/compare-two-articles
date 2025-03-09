@@ -1,11 +1,9 @@
 <script>
 	import general from "./components/general.vue";
-	import Vis2 from "./components/Vis2.vue";
 	export default {
 		name: "App",
 		components: {
-			general,
-			Vis2
+			general
 		},
 		mounted() {
 			this.getData();
@@ -27,7 +25,6 @@
 
 <template>
 	<general></general>
-	<!-- <Vis2></Vis2> -->
 </template>
 
 <style scoped></style>

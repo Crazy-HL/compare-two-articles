@@ -311,3 +311,60 @@ export function renderBarChart(chartRef, data, options) {
 export function renderPieChart(chartRef, data, options) {
     console.log("渲染饼图数据:", data);
 }
+
+// 渲染非可视化数据的默认占位图表
+export function renderNonVisualChart(chartRef, data, options) {
+    if (!chartRef) {
+        console.error("图表容器未找到");
+        return;
+    }
+
+    console.log("渲染非可视化数据图表:", data);
+
+    const margin = { top: 20, right: 20, bottom: 20, left: 20 };
+    const width = 300 - margin.left - margin.right; // 图表宽度
+    const height = 200 - margin.top - margin.bottom; // 图表高度
+
+    // 清空容器，确保重新渲染
+    d3.select(chartRef).html("");
+
+    // 创建 SVG 容器
+    const svg = d3
+        .select(chartRef)
+        .append("svg")
+        .attr("width", width + margin.left + margin.right)
+        .attr("height", height + margin.top + margin.bottom)
+        .append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    // 添加背景矩形
+    svg.append("rect")
+        .attr("width", width)
+        .attr("height", height)
+        .attr("fill", "#f8f9fa") // 轻灰色背景
+        .attr("rx", 12) // 圆角边框
+        .attr("ry", 12)
+        .style("stroke", "#ccc") // 边框颜色
+        .style("stroke-width", 1);
+
+    // 添加占位文本
+    svg.append("text")
+        .attr("x", width / 2)
+        .attr("y", height / 2 - 10)
+        .attr("text-anchor", "middle")
+        .attr("font-size", "16px")
+        .attr("fill", "#555")
+        .style("font-weight", "bold")
+        .text("数据不可视化");
+
+    // 添加可选的提示信息
+    if (options?.message) {
+        svg.append("text")
+            .attr("x", width / 2)
+            .attr("y", height / 2 + 20)
+            .attr("text-anchor", "middle")
+            .attr("font-size", "14px")
+            .attr("fill", "#777")
+            .text(options.message);
+    }
+}

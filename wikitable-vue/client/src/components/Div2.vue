@@ -44,7 +44,8 @@
 	import {
 		renderLineChart,
 		renderBarChart,
-		renderPieChart
+		renderPieChart,
+		renderNonVisualChart
 	} from "@/js/chartUtils";
 
 	const userQuestion = ref(""); // 用户输入的问题
@@ -139,29 +140,25 @@
 		}
 	}
 
-	// 提交文章内容并获取处理结果
+	//获取可视化json数据
 	async function processText() {
 		try {
-			const response = await fetch("http://localhost:8888/process_text", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json"
-				},
-				body: JSON.stringify({ text: selectText2.value })
+			api.post("process_text", { text: selectText2.value }, data => {
+				if (data.error) {
+					console.error("后端返回的错误:", data.error);
+					alert(`处理文章内容时出错: ${data.message}`);
+					return;
+				}
+
+				const jsonData = data.json_data;
+				console.log("后端返回的数据:", jsonData);
+				if (data.data_type === "Non-Visual") {
+					renderNonVisualChart(".chart-container", data, {
+						message: "当前数据无法可视化"
+					});
+				}
+				renderChart(jsonData);
 			});
-			const result = await response.json();
-
-			// 检查是否有错误信息
-			if (result.error) {
-				console.error("后端返回的错误:", result.error);
-				alert(`处理文章内容时出错: ${result.message}`);
-				return;
-			}
-
-			// 赋值时确保 jsonData 是对象
-			const jsonData = result.json_data;
-			console.log("后端返回的数据:", jsonData);
-			renderChart(jsonData);
 		} catch (error) {
 			console.error("处理文章内容时出错:", error);
 			alert("处理文章内容时出错，请稍后重试");
@@ -171,6 +168,11 @@
 	// 渲染图表
 	function renderChart(rawJsonData) {
 		if (!rawJsonData || typeof rawJsonData !== "object" || !rawJsonData.data) {
+			if (data.data_type === "Non-Visual") {
+				renderNonVisualChart(".chart-container", data, {
+					message: "JSON 数据无效"
+				});
+			}
 			console.error("JSON 数据无效:", rawJsonData);
 			return;
 		}
