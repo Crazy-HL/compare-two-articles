@@ -74,7 +74,9 @@
 		renderLineChart,
 		renderBarChart,
 		renderPieChart,
-		renderNonVisualChart
+		renderNonVisualChart,
+		renderRadarChart,
+		renderStackedBarChart
 	} from "@/js/chartUtils";
 
 	const props = defineProps({
@@ -192,7 +194,7 @@
 		showPopup.value[props.divId] = true; // 根据 divId 显示弹窗
 		currentView.value = "text"; // 默认显示文本视图
 
-		// 触发高亮
+		// 传递选中内容
 		bus.emit(`${props.divId}Event`, { content: selection.toString() });
 
 		// 确保弹窗位置更新
@@ -275,7 +277,7 @@
 							message: "当前数据无法可视化"
 						});
 					} else {
-						renderChart(jsonData);
+						renderChart(jsonData, data.chart_classification);
 					}
 				}
 			);
@@ -286,7 +288,7 @@
 	}
 
 	// 渲染图表
-	function renderChart(rawJsonData) {
+	function renderChart(rawJsonData, chartType) {
 		if (!rawJsonData || typeof rawJsonData !== "object" || !rawJsonData.data) {
 			const container =
 				props.divId === "div1" ? ".chart-container1" : ".chart-container2";
@@ -304,17 +306,18 @@
 		// 清空之前的图表
 		d3.select(container).html("");
 
-		const chartType = rawJsonData.type;
 		const data = rawJsonData.data;
 		const options = rawJsonData.options || {};
 
 		// 根据图表类型渲染
-		if (chartType === "line") {
+		if (chartType === "Line Chart") {
 			renderLineChart(container, data, options);
-		} else if (chartType === "bar") {
+		} else if (chartType === "Bar Chart") {
 			renderBarChart(container, data, options);
-		} else if (chartType === "pie") {
+		} else if (chartType === "Pie Chart") {
 			renderPieChart(container, data, options);
+		} else if (chartType === "Stacked Bar Chart") {
+			renderStackedBarChart(container, data, options);
 		} else {
 			console.error("未知的图表类型:", chartType);
 		}
@@ -352,6 +355,10 @@
 </script>
 
 <style scoped>
+	h1 {
+		text-align: center;
+	}
+
 	/* 文章容器 */
 	.div0 {
 		position: relative; /* 关键：父容器设置为 relative */
@@ -391,14 +398,15 @@
 		font-size: 0.6vw;
 	}
 
-	/* 遮罩层（固定在 Div1 或 Div3 内部） */
+	/* 遮罩层（固定在 Div1 或 Div3 内部） */ /* 遮罩层（固定在 Div1 或 Div3 内部） */
 	.overlay {
 		position: absolute; /* 关键：相对于父容器定位 */
 		top: 0;
 		left: 0;
 		width: 100%;
 		height: 100%;
-		background: rgba(0, 0, 0, 0.6);
+		background: rgba(255, 255, 255, 0.1); /* 半透明背景 */
+		backdrop-filter: blur(10px); /* 背景模糊效果 */
 		z-index: 90;
 		animation: fadeIn 0.3s ease-in-out;
 	}
@@ -410,7 +418,6 @@
 		left: 50%;
 		transform: translate(-50%, -50%);
 		width: 90%; /* 宽度占 Div1 或 Div3 的 80% */
-		/* max-width: 600px; */
 		max-height: 80vh; /* 限制最大高度 */
 		overflow: auto; /* 添加滚动条 */
 		background: rgba(255, 255, 255, 0.98); /* 更亮的背景 */
@@ -637,7 +644,7 @@
 	}
 
 	.view-switcher button {
-		padding: 8px;
+		padding: 25px;
 		margin: 0 5px;
 		border: none;
 		border-radius: 50%; /* 圆形按钮 */

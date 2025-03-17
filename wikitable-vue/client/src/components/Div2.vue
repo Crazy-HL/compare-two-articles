@@ -30,7 +30,7 @@
 				<div class="button-container">
 					<button @click="askQuestion">发送</button>
 					<button @click="compareTexts">对比文章</button>
-					<button @click="processText" class="submit-btn">提交可视化</button>
+					<button @click="mergedJson" class="submit-btn">合并数据可视化</button>
 				</div>
 			</div>
 		</div>
@@ -45,7 +45,10 @@
 		renderLineChart,
 		renderBarChart,
 		renderPieChart,
-		renderNonVisualChart
+		renderNonVisualChart,
+		renderRadarChart,
+		renderStackedBarChart,
+		renderScatterChart
 	} from "@/js/chartUtils";
 
 	const userQuestion = ref(""); // 用户输入的问题
@@ -140,6 +143,52 @@
 		}
 	}
 
+	// 合并数据
+	async function mergedJson() {
+		if (!selectText2.value || !selectText3.value) {
+			alert("请先选择两段文本！");
+			return;
+		}
+
+		try {
+			api.post(
+				"merged_json",
+				{ text1: selectText2.value, text2: selectText3.value },
+				data => {
+					if (data.error) {
+						console.error("后端返回的错误:", data.error);
+						alert(`处理文章内容时出错: ${data.message}`);
+						return;
+					}
+
+					const jsonData = data.json_data;
+					console.log("后端返回的数据:", jsonData);
+					if (data.yes_no === "no" || !jsonData) {
+						renderNonVisualChart(".chart-container", data, {
+							message: "当前数据无法合并"
+						});
+						return;
+					}
+					renderChart(jsonData, data.chart_classification);
+					// 通过事件总线将 Div1 和 Div3 的 JSON 数据传递给 TextPopup.vue
+					bus.emit("updateChart1", {
+						divId: "div1",
+						jsonData: data.div1_json,
+						chartType: data.chart_classification
+					});
+					bus.emit("updateChart3", {
+						divId: "div3",
+						jsonData: data.div3_json,
+						chartType: data.chart_classification
+					});
+				}
+			);
+		} catch (error) {
+			console.error("处理JSON时出错:", error);
+			alert("处理JSON时出错，请稍后重试");
+		}
+	}
+
 	//获取可视化json数据
 	async function processText() {
 		try {
@@ -157,7 +206,7 @@
 						message: "当前数据无法可视化"
 					});
 				}
-				renderChart(jsonData);
+				renderChart(jsonData, data.chart_classification);
 			});
 		} catch (error) {
 			console.error("处理文章内容时出错:", error);
@@ -166,30 +215,35 @@
 	}
 
 	// 渲染图表
-	function renderChart(rawJsonData) {
-		if (!rawJsonData || typeof rawJsonData !== "object" || !rawJsonData.data) {
-			if (data.data_type === "Non-Visual") {
-				renderNonVisualChart(".chart-container", data, {
-					message: "JSON 数据无效"
-				});
-			}
+	function renderChart(rawJsonData, chartType) {
+		if (!rawJsonData || typeof rawJsonData !== "object") {
+			console.log("rawJsonData:", rawJsonData);
+			console.log("type_rawJsonData:", typeof rawJsonData);
+			renderNonVisualChart(`.${props.containerClass}`, rawJsonData, {
+				message: "JSON 数据无效"
+			});
 			console.error("JSON 数据无效:", rawJsonData);
 			return;
 		}
 
-		// 清空之前的图表
-		d3.select(".chart-container").html("");
-
-		const chartType = rawJsonData.type;
 		const data = rawJsonData.data;
 		const options = rawJsonData.options || {};
+		// 获取 chart-container 的 DOM 元素
+		const chartContainer = document.querySelector(".chart-container");
 
-		if (chartType === "line") {
-			renderLineChart(".chart-container", data, options);
-		} else if (chartType === "bar") {
-			renderBarChart(".chart-container", data, options);
-		} else if (chartType === "pie") {
-			renderPieChart(".chart-container", data, options);
+		// 根据图表类型渲染
+		if (chartType === "Line Chart") {
+			renderLineChart(chartContainer, data, options);
+		} else if (chartType === "Bar Chart") {
+			renderBarChart(chartContainer, rawJsonData);
+		} else if (chartType === "Pie Chart") {
+			renderPieChart(chartContainer, data, options);
+		} else if (chartType === "Stacked Bar Chart") {
+			renderStackedBarChart(chartContainer, data, options);
+		} else if (chartType === "Radar Chart") {
+			renderRadarChart(chartContainer, rawJsonData);
+		} else if (chartType === "Scatter Chart") {
+			renderScatterChart(chartContainer, rawJsonData);
 		} else {
 			console.error("未知的图表类型:", chartType);
 		}

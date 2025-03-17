@@ -11,14 +11,15 @@ from tool.chart_formats import (
     get_horizontal_bar_chart_format,
     get_histogram_format,
     get_stacked_bar_chart_format,
-    get_scatter_plot_format
+    get_scatter_plot_format,
+    get_radar_chart_format
 )
 from tool.json_extractor import extract_json
 
 
 # 初始化 OpenAI 客户端
 client = OpenAI(
-    api_key="sk-DpMfYrwYZtjzzpfQfdrZRt4kfL9G4HeHDeOTYEXl2RecgN6y", 
+    api_key="sk-TP5irJaHr4BnF5FMSzmGh1dHDX7xWWIzwHY7QordRTvfo9UD", 
     base_url="https://api.moonshot.cn/v1",
 )
 
@@ -134,6 +135,107 @@ class GPTAskHandler(tornado.web.RequestHandler):
                 "message": "提问时出错"
             }))
 
+
+class MergedJsonsHandler(tornado.web.RequestHandler):
+    def set_default_headers(self):
+        self.set_header("Access-Control-Allow-Origin", "*")
+        self.set_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+        self.set_header("Access-Control-Allow-Headers", "Content-Type")
+
+    def options(self):
+        self.set_status(204)
+        self.finish()
+
+    def post(self):
+        try:
+            data = json.loads(self.request.body)
+            text1 = data.get("text1")
+            text2 = data.get("text2")
+            # yes_no = chat(f"""
+            #                      帮我分别判断{text1}和{text2}的内容是否适合将数据提取出来进行可视化，如果有一个不适合则返回“no”，否则返回“yes”。
+            #                      **预期输出**: 您的响应应该是列表["yes","no"]中的单个单词，不带任何额外的解释或理由。""")
+            
+            # if yes_no == 'no':
+            #     # 直接返回结果，不执行后续代码
+            #     self.write(json.dumps({
+            #         "data_classification": "",
+            #         "json_data": "",
+            #         "yes_no":"no"
+            #     }))
+            #     return
+            suitable_charts = ["Line Chart","Scatter Chart","Bar Chart","Stacked Bar Chart"]
+            chart_classification = chat(f"""
+            从以下列表中{suitable_charts}选择一个最适合{text1}可视化的图表类型，同时也适合{text2}可视化的图表类型。
+            预期输出: 你的响应应该是以下列表中的一个单词{suitable_charts}，不需要额外的解释或理由。
+            """)
+            chart_classification = chart_classification.strip()
+            print("chart_classification：", chart_classification)
+
+            # 根据不同的图表类型，选择对应的 JSON 格式
+            if chart_classification == "Bar Chart":
+                json_format = get_bar_chart_format()
+            elif chart_classification == "Pie Chart":
+                json_format = get_pie_chart_format()
+            elif chart_classification == "Line Chart":
+                json_format = get_line_chart_format()
+            elif chart_classification == "Horizontal Bar Chart":
+                json_format = get_horizontal_bar_chart_format()
+            elif chart_classification == "Histogram":
+                json_format = get_histogram_format()
+            elif chart_classification == "Stacked Bar Chart":
+                json_format = get_stacked_bar_chart_format()
+            elif chart_classification == "Scatter Chart":
+                json_format = get_scatter_plot_format()
+            elif chart_classification == "Radar Chart":
+                json_format = get_radar_chart_format()
+            else:
+                json_format = []
+
+            # 提取数据并转换成标准 JSON 格式
+            json1_data = chat(f"""
+            将{text1}可视化为{chart_classification}所需的数据提取出来，提取的数据一定要完整且合理，如果是表格数据，则应该将全部数据都提取出来，不要删减。如果数据值为0，请不要省略。按照下面举例的 JSON 格式输出（内容需要自行分析，要符合提取的数据内容）：{json_format}
+            预期输出: 你的响应应该是一个由花括号包裹的 JSON 格式的数据，该数据要符合规范
+            （例如：1、不要添加\减少括号或逗号等；
+            2、属性值要正确等；3、不要添加任何额外的解释或理由），
+            同时花括号外也不带任何额外的解释或理由，同时数据中的非数值应该被替换为0（例如null、undefind等）。
+            """)
+            json2_data = chat(f"""
+            将{text2}可视化为{chart_classification}所需的数据提取出来，提取的数据一定要完整且合理，如果是表格数据，则应该将全部数据都提取出来，不要删减。如果数据值为0，请不要省略。按照下面举例的 JSON 格式输出（内容需要自行分析，要符合提取的数据内容）：{json_format}
+            预期输出: 你的响应应该是一个由花括号包裹的 JSON 格式的数据，该数据要符合规范
+            （例如：1、不要添加\减少括号或逗号等；
+            2、属性值要正确等；3、不要添加任何额外的解释或理由），
+            同时花括号外也不带任何额外的解释或理由，同时数据中的非数值应该被替换为0（例如null、undefind等）。
+            """)
+            # 调用函数提取 JSON 数据
+            json1_data = extract_json(json1_data)
+            json2_data = extract_json(json2_data)
+            #合并json数据
+            json_data = chat(f"""
+            帮我将{json1_data}和{json2_data}两个JSON数据合并，要求合并数据必须包含了这两个JSON数据的所有数据，并且合并后的JSON格式与这两个JSON数据相同。
+            预期输出: 你的响应应该是一个由花括号包裹的 JSON 格式的数据，该数据要符合规范
+            （例如：1、不要添加\减少括号或逗号等；
+            2、属性值要正确等；3、不要添加任何额外的解释或理由），
+            同时花括号外也不带任何额外的解释或理由，同时数据中的非数值应该被替换为0（例如null、undefind等）。""")
+            # 调用函数提取 JSON 数据
+            json_data = extract_json(json_data)
+            print("json1:",json1_data)
+            print("json2:",json2_data)
+            print("json:",json_data)
+            # 返回结果
+            self.write(json.dumps({
+                "chart_classification": chart_classification,
+                "json_data": json_data,
+                "div1_json": json1_data,
+                "div3_json": json2_data,
+                "yes_no":"yes"
+            }))
+        except Exception as e:
+            # 捕获所有异常并返回 JSON 格式的错误信息
+            self.write(json.dumps({
+                "error": str(e),
+                "message": "处理文章内容时出错"
+            }))
+
 class ProcessTextHandler(tornado.web.RequestHandler):
     def set_default_headers(self):
         self.set_header("Access-Control-Allow-Origin", "*")
@@ -187,17 +289,17 @@ class ProcessTextHandler(tornado.web.RequestHandler):
 
             # 根据分类判断合适的可视化类型
             if data_classification == "Value":
-                suitable_charts = ["Bar Chart", "Line Chart", "Horizontal Bar Chart"]
+                suitable_charts = ["Line Chart"]
             elif data_classification == "Proportional":
-                suitable_charts = ["Pie Chart", "Stacked Bar Chart"]
+                suitable_charts = ["Line Chart","Scatter Chart"]
             elif data_classification == "Categorical":
-                suitable_charts = ["Bar Chart", "Horizontal Bar Chart"]
+                suitable_charts = ["Bar Chart"]
             elif data_classification == "Distribution":
                 suitable_charts = ["Histogram"]
             elif data_classification == "Comparison":
                 suitable_charts = ["Bar Chart", "Stacked Bar Chart", "Line Chart"]
             elif data_classification == "Relational":
-                suitable_charts = ["Scatter Plot"]
+                suitable_charts = ["Scatter Chart"]
             elif data_classification == "Trend":
                 suitable_charts = ["Line Chart"]
             else:
@@ -224,19 +326,24 @@ class ProcessTextHandler(tornado.web.RequestHandler):
                 json_format = get_histogram_format()
             elif chart_classification == "Stacked Bar Chart":
                 json_format = get_stacked_bar_chart_format()
-            elif chart_classification == "Scatter Plot":
+            elif chart_classification == "Scatter Chart":
                 json_format = get_scatter_plot_format()
+                print("format:",json_format)
+            elif chart_classification == "Radar Chart":
+                json_format = get_radar_chart_format()
             else:
                 json_format = []
 
             # 提取数据并转换成标准 JSON 格式
             json_data = chat(f"""
-            将{text}可视化为{chart_classification}所需的数据提取出来，按照下面举例的 JSON 格式输出：{json_format}
+            将{text}可视化为{chart_classification}所需的数据提取出来，尽可能提取的数据完整，按照下面举例的 JSON 格式输出（内容需要自行分析，要符合提取的数据内容）：{json_format}
             预期输出: 你的响应应该是一个由花括号包裹的 JSON 格式的数据，该数据要符合规范
             （例如：1、不要添加\减少括号或逗号等；
             2、属性值要正确等；3、不要添加任何额外的解释或理由），
             同时花括号外也不带任何额外的解释或理由，同时数据中的非数值应该被替换为0（例如null、undefind等）。
             """)
+            print('classification:',chart_classification)
+            print("format:",json_format)
             print("###:",json_data)
             # 调用函数提取 JSON 数据
             json_data = extract_json(json_data)
@@ -245,7 +352,7 @@ class ProcessTextHandler(tornado.web.RequestHandler):
             # 返回结果
             self.write(json.dumps({
                 "data_type": data_type,
-                "data_classification": data_classification,
+                "chart_classification": chart_classification,
                 "json_data": json_data
             }))
         except Exception as e:
@@ -282,6 +389,7 @@ def make_app():
         (r"/gpt_compare", GPTCompareHandler),  # 对比文章接口
         (r"/gpt_ask", GPTAskHandler),  # 提问接口
         (r"/process_text", ProcessTextHandler),  # 新增的处理文章内容接口
+        (r"/merged_json",MergedJsonsHandler), #合并json数据
     ], debug=True)
 
 if __name__ == "__main__":
