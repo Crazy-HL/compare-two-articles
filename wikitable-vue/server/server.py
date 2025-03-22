@@ -19,7 +19,7 @@ from tool.json_extractor import extract_json
 
 # 初始化 OpenAI 客户端
 client = OpenAI(
-    api_key="sk-TP5irJaHr4BnF5FMSzmGh1dHDX7xWWIzwHY7QordRTvfo9UD", 
+    api_key="sk-vxIw2Mzyk0AZ4cbQUCCiQOjXuuWt7L5eYZpbQy4pfAwvlL56", 
     base_url="https://api.moonshot.cn/v1",
 )
 
@@ -106,6 +106,80 @@ class GPTCompareHandler(tornado.web.RequestHandler):
             self.write(json.dumps({
                 "error": str(e),
                 "message": "对比文章时出错"
+            }))
+
+# 新增 AnalyzeChartHandler 和 GPTAskChartHandler
+class AnalyzeChartHandler(tornado.web.RequestHandler):
+    def set_default_headers(self):
+        self.set_header("Access-Control-Allow-Origin", "*")
+        self.set_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+        self.set_header("Access-Control-Allow-Headers", "Content-Type")
+
+    def options(self):
+        self.set_status(204)
+        self.finish()
+
+    def post(self):
+        try:
+            data = json.loads(self.request.body)
+            chart_data = data.get("chartData")
+            chart_type = data.get("chartType")
+
+            print("接收到的图表数据:", chart_data)  # 调试日志
+            print("接收到的图表类型:", chart_type)  # 调试日志
+
+            # 调用大模型分析图表
+            analysis_result = chat(f"""
+            请分析以下图表数据：
+            - 图表类型：{chart_type}
+            - 图表数据：{json.dumps(chart_data, ensure_ascii=False)}
+            请总结图表的关键数据点和你的分析结论。对于关键数据点的分析，只需要指出是哪个点且关键的理由即可，回复尽可能简洁明了。
+            对于分析结论，同样需要尽可能简洁明了。最后输出内容，要求美观。不需要给出总结性话语。
+            """)
+
+            print("大模型分析结果:", analysis_result)  # 调试日志
+
+            # 返回分析结果
+            self.write(json.dumps({
+                "analysis": analysis_result  # 确保返回的字段是 analysis
+            }))
+        except Exception as e:
+            print("图表分析失败:", str(e))  # 调试日志
+            self.write(json.dumps({
+                "error": str(e),
+                "message": "图表分析失败"
+            }))
+
+class GPTAskChartHandler(tornado.web.RequestHandler):
+    def set_default_headers(self):
+        self.set_header("Access-Control-Allow-Origin", "*")
+        self.set_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+        self.set_header("Access-Control-Allow-Headers", "Content-Type")
+
+    def options(self):
+        self.set_status(204)
+        self.finish()
+
+    def post(self):
+        try:
+            data = json.loads(self.request.body)
+            question = data.get("question")
+            chart_data = data.get("chartData")
+            chart_type = data.get("chartType")
+
+            # 使用图表数据和用户问题进行对话
+            answer = chat(f"""
+            以下是图表数据：
+            - 图表类型：{chart_type}
+            - 图表数据：{json.dumps(chart_data, ensure_ascii=False)}
+            用户提问：{question}
+            """)
+
+            self.write(json.dumps({"answer": answer}))
+        except Exception as e:
+            self.write(json.dumps({
+                "error": str(e),
+                "message": "提问时出错"
             }))
 
 class GPTAskHandler(tornado.web.RequestHandler):
@@ -382,6 +456,66 @@ class HtmlHandler(tornado.web.RequestHandler):
             self.write(html)
         self.write('error')
 
+class OutlineMatchHandler(tornado.web.RequestHandler):
+    def set_default_headers(self):
+        self.set_header("Access-Control-Allow-Origin", "*")
+        self.set_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+        self.set_header("Access-Control-Allow-Headers", "Content-Type")
+
+    def options(self):
+        self.set_status(204)
+        self.finish()
+
+    def post(self):
+        try:
+            data = json.loads(self.request.body)
+            outline1 = data.get("outline1")
+            outline2 = data.get("outline2")
+
+            # 调用大模型进行文本匹配
+            match_result = chat(f"""
+            输入参数{outline1} 和 {outline2}:
+                这两个参数都是数组，包含每个大纲的章节信息。
+                每个章节信息应该是一个对象，其中包含至少两个字段：
+                id：章节的唯一标识符。
+                text：章节标题的文本内容。
+            示例输入：
+            const outline1 = [
+                {{id: "heading-0", text: "Introduction to AI" }},
+                {{id: "heading-1", text: "Machine Learning Basics" }}];
+            
+            const outline2 = [
+                {{id: "heading-0", text: "AI Introduction" }},
+                {{id: "heading-1", text: "Basics of Machine Learning"}}];
+
+            如果 outline1 和 outline2 中的两个章节标题被认为是相似的，那么这两个章节的 ID 将会被匹配在一起。
+            预期输出: 你的响应应该是一个由花括号包裹的 JSON 格式的数据，，不需要额外的解释或理由。
+            示例输出：
+            {{
+                {{leftId: "heading-0", rightId: "heading-0"}},
+                {{leftId: "heading-1", rightId: "heading-1"}}
+            }}
+            """)
+
+            # 解析大模型返回的匹配结果 (假设返回的是数组)
+            try:
+                # 如果大模型返回的是数组，直接使用
+                match_result = match_result
+            except Exception as e:
+                match_result = []
+
+            print("match_result:",match_result)
+            # 返回匹配结果
+            self.write(json.dumps({
+                "match_result": match_result  # 返回直接返回匹配的结果数组
+            }))
+        except Exception as e:
+            self.write(json.dumps({
+                "error": str(e),
+                "message": "文本匹配时出错"
+            }))
+
+
 def make_app():
     return tornado.web.Application([
         (r"/", MainHandler),
@@ -390,6 +524,9 @@ def make_app():
         (r"/gpt_ask", GPTAskHandler),  # 提问接口
         (r"/process_text", ProcessTextHandler),  # 新增的处理文章内容接口
         (r"/merged_json",MergedJsonsHandler), #合并json数据
+        (r"/analyze_chart", AnalyzeChartHandler),  # 新增图表分析接口
+        (r"/gpt_ask_chart", GPTAskChartHandler),  # 新增图表提问接口
+        (r"/outline_match", OutlineMatchHandler),  # 新增大纲章节匹配接口
     ], debug=True)
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 <template>
 	<div class="main-container">
 		<!-- 聊天容器 -->
-		<div class="chat-container">
+		<div class="chat-container" @dragover.prevent @drop="handleDrop">
 			<!-- 历史对话记录 -->
 			<div class="chat-history">
 				<div
@@ -10,7 +10,8 @@
 					:class="['message', message.role]">
 					<div class="message-content">
 						<strong>{{ message.role === "user" ? "用户" : "GPT" }}:</strong>
-						<p>{{ message.content }}</p>
+						<p v-html="message.content"></p>
+						<!-- 使用 v-html 渲染 HTML 内容 -->
 					</div>
 				</div>
 			</div>
@@ -19,7 +20,11 @@
 		<!-- 视觉内容容器 -->
 		<div class="vis-container">
 			<!-- 可用于显示图形或其他内容 -->
-			<div ref="chart" class="chart-container"></div>
+			<div
+				ref="chart"
+				class="chart-container"
+				draggable="true"
+				@dragstart="handleDragStart"></div>
 
 			<!-- 输入框和操作按钮 -->
 			<div class="input-container">
@@ -29,7 +34,7 @@
 					placeholder="请输入你想问的问题..."></textarea>
 				<div class="button-container">
 					<button @click="askQuestion">发送</button>
-					<button @click="compareTexts">对比文章</button>
+					<!-- <button @click="compareTexts">对比文章</button> -->
 					<button @click="mergedJson" class="submit-btn">合并数据可视化</button>
 				</div>
 			</div>
@@ -55,17 +60,22 @@
 	const chatHistory = ref([]); // 历史对话记录
 	const selectText2 = ref(""); // 左侧选中文本
 	const selectText3 = ref(""); // 右侧选中文本
+	const currentChartData = ref(null); // 当前图表数据
+	const currentChartType = ref(null); // 当前图表类型
 
-	let offDiv1, offDiv3;
+	// 定义回调函数
+	const handleDiv1Event = data => handleSelection(data, "div1");
+	const handleDiv3Event = data => handleSelection(data, "div3");
 
 	onMounted(() => {
-		offDiv1 = bus.on("div1Event", data => handleSelection(data, "div1"));
-		offDiv3 = bus.on("div3Event", data => handleSelection(data, "div3"));
+		bus.on("div1Event", handleDiv1Event);
+		bus.on("div3Event", handleDiv3Event);
 	});
 
 	onUnmounted(() => {
-		offDiv1();
-		offDiv3();
+		// 解绑事件
+		bus.off("div1Event", handleDiv1Event);
+		bus.off("div3Event", handleDiv3Event);
 	});
 
 	// 处理选中文本
@@ -87,8 +97,104 @@
 		return container.innerText || container.textContent || "";
 	}
 
+	// 处理拖拽开始事件
+	const handleDragStart = event => {
+		// 将图表数据传递给拖拽事件
+		event.dataTransfer.setData(
+			"application/json",
+			JSON.stringify({
+				chartData: currentChartData.value,
+				chartType: currentChartType.value
+			})
+		);
+		console.log("拖拽数据已设置:", currentChartData.value); // 调试日志
+	};
+
+	// 处理拖拽释放事件
+	const handleDrop = event => {
+		event.preventDefault();
+		const data = event.dataTransfer.getData("application/json");
+		console.log("接收到的拖拽数据:", data); // 调试日志
+
+		if (data) {
+			try {
+				const { chartData, chartType } = JSON.parse(data);
+				console.log("解析后的图表数据:", chartData); // 调试日志
+				console.log("解析后的图表类型:", chartType); // 调试日志
+
+				currentChartData.value = chartData;
+				currentChartType.value = chartType;
+				analyzeChart(chartData, chartType); // 调用大模型分析图表
+			} catch (error) {
+				console.error("解析拖拽数据失败:", error);
+			}
+		} else {
+			console.error("未接收到拖拽数据");
+		}
+	};
+
+	// 分析图表
+	const analyzeChart = (chartData, chartType) => {
+		console.log("正在调用后端接口..."); // 调试日志
+
+		// 调用大模型分析图表
+		api.post(
+			"analyze_chart",
+			{ chartData, chartType },
+			response => {
+				console.log("后端接口返回的数据:", response); // 调试日志
+
+				// 检查 response 是否存在且包含 analysis 字段
+				if (response && response.analysis) {
+					// 格式化分析结果
+					const formattedAnalysis = formatAnalysisResult(response.analysis);
+
+					// 将分析结果添加到聊天记录
+					chatHistory.value.push({
+						role: "assistant",
+						content: formattedAnalysis // 使用格式化后的 HTML 内容
+					});
+				} else {
+					console.error("后端返回的数据格式不正确:", response);
+					chatHistory.value.push({
+						role: "assistant",
+						content: "图表分析失败，后端返回的数据格式不正确。"
+					});
+				}
+			},
+			error => {
+				// 处理错误
+				console.error("图表分析失败:", error);
+				chatHistory.value.push({
+					role: "assistant",
+					content: "图表分析失败，请稍后重试。"
+				});
+			}
+		);
+	};
+
+	const formatAnalysisResult = text => {
+		// 转换 Markdown 标题
+		text = text.replace(/### (.*)/g, "<h3>$1</h3>");
+
+		// 转换加粗文本
+		text = text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+
+		// 处理换行符
+		text = text.replace(/\n/g, "<br>");
+
+		// 处理列表项（数字编号和短横线）
+		text = text.replace(/(?:^|\n)(\d+\.\s+.*)/g, "<li>$1</li>");
+		text = text.replace(/(?:^|\n)-\s+(.*)/g, "<li>$1</li>");
+
+		// 统一包裹列表项
+		text = text.replace(/(<li>.*<\/li>)/gs, "<ul>$1</ul>");
+
+		return text;
+	};
+
 	// 向 GPT 提问
-	async function askQuestion() {
+	const askQuestion = () => {
 		if (!userQuestion.value) {
 			alert("请输入问题！");
 			return;
@@ -97,26 +203,37 @@
 		// 将用户的问题添加到历史记录
 		chatHistory.value.push({ role: "user", content: userQuestion.value });
 
-		try {
-			const response = await api.post(
-				"gpt_ask",
-				{ question: userQuestion.value },
-				data => {
-					if (data) {
-						// 将 GPT 的回答添加到历史记录
-						chatHistory.value.push({ role: "assistant", content: data.answer });
-					} else {
-						console.error("提问失败:", data.error);
-					}
-				}
-			);
-		} catch (error) {
-			console.error("请求失败:", error);
-		}
+		// 调用 GPT 提问接口
+		api.post(
+			"gpt_ask_chart",
+			{
+				question: userQuestion.value,
+				chartData: currentChartData.value,
+				chartType: currentChartType.value
+			},
+			response => {
+				// 成功回调
+				console.log("后端接口返回的数据:", response); // 调试日志
+
+				// 格式化 GPT 的回答
+				const formattedAnswer = formatAnalysisResult(response.answer);
+
+				// 将 GPT 的回答添加到历史记录
+				chatHistory.value.push({ role: "assistant", content: formattedAnswer });
+			},
+			error => {
+				// 错误回调
+				console.error("请求失败:", error);
+				chatHistory.value.push({
+					role: "assistant",
+					content: "请求失败，请稍后重试。"
+				});
+			}
+		);
 
 		// 清空输入框
 		userQuestion.value = "";
-	}
+	};
 
 	// 对比文章
 	async function compareTexts() {
@@ -162,6 +279,8 @@
 					}
 
 					const jsonData = data.json_data;
+					currentChartData.value = jsonData;
+					currentChartType.value = data.chart_classification;
 					console.log("后端返回的数据:", jsonData);
 					if (data.yes_no === "no" || !jsonData) {
 						renderNonVisualChart(".chart-container", data, {
@@ -171,11 +290,13 @@
 					}
 					renderChart(jsonData, data.chart_classification);
 					// 通过事件总线将 Div1 和 Div3 的 JSON 数据传递给 TextPopup.vue
+					console.log("触发 updateChart1 事件");
 					bus.emit("updateChart1", {
 						divId: "div1",
 						jsonData: data.div1_json,
 						chartType: data.chart_classification
 					});
+					console.log("触发 updateChart3 事件");
 					bus.emit("updateChart3", {
 						divId: "div3",
 						jsonData: data.div3_json,
@@ -186,31 +307,6 @@
 		} catch (error) {
 			console.error("处理JSON时出错:", error);
 			alert("处理JSON时出错，请稍后重试");
-		}
-	}
-
-	//获取可视化json数据
-	async function processText() {
-		try {
-			api.post("process_text", { text: selectText2.value }, data => {
-				if (data.error) {
-					console.error("后端返回的错误:", data.error);
-					alert(`处理文章内容时出错: ${data.message}`);
-					return;
-				}
-
-				const jsonData = data.json_data;
-				console.log("后端返回的数据:", jsonData);
-				if (data.data_type === "Non-Visual") {
-					renderNonVisualChart(".chart-container", data, {
-						message: "当前数据无法可视化"
-					});
-				}
-				renderChart(jsonData, data.chart_classification);
-			});
-		} catch (error) {
-			console.error("处理文章内容时出错:", error);
-			alert("处理文章内容时出错，请稍后重试");
 		}
 	}
 
@@ -307,6 +403,38 @@
 		text-align: left;
 	}
 
+	/* 分析结果的样式 */
+	.message-content p {
+		font-family: Arial, sans-serif;
+		line-height: 1.6;
+		color: #333;
+	}
+
+	.message-content h3 {
+		font-size: 1.2em;
+		font-weight: bold;
+		margin: 10px 0;
+		color: #0077b6;
+	}
+
+	.message-content strong {
+		font-weight: bold;
+		color: #d90429;
+	}
+
+	.message-content ul {
+		margin: 10px 0;
+		padding-left: 20px;
+	}
+
+	.message-content li {
+		margin-bottom: 5px;
+	}
+
+	.message-content br {
+		display: block;
+		margin: 10px 0;
+	}
 	/* 视觉内容容器 */
 	.vis-container {
 		flex: 1;

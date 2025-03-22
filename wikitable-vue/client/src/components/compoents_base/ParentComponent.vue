@@ -23,6 +23,10 @@
 			"
 			:containerRef="divRef"
 			@close="closePopup" />
+
+		<!-- 悬浮大纲组件 -->
+		<ArticleOutline :content="pageHtml" :divId="divId" />
+		<!-- 添加 key 属性 -->
 	</div>
 </template>
 
@@ -32,16 +36,9 @@
 	import ErrorDisplay from "./ErrorDisplay.vue";
 	import WikipediaContent from "./WikipediaContent.vue";
 	import TextPopup from "./TextPopup.vue";
+	import ArticleOutline from "./ArticleOutline.vue"; // 引入大纲组件
 	import * as d3 from "d3";
 	import bus from "@/js/eventBus.js";
-	import {
-		renderLineChart,
-		renderBarChart,
-		renderPieChart,
-		renderNonVisualChart,
-		renderRadarChart,
-		renderStackedBarChart
-	} from "@/js/chartUtils";
 
 	const props = defineProps({
 		pageTitle: String,
@@ -70,6 +67,13 @@
 			// 解析 HTML
 			const parser = new DOMParser();
 			const doc = parser.parseFromString(html, "text/html");
+
+			// **给所有 h1-h6 添加唯一 ID**
+			const headings = doc.querySelectorAll("h1, h2, h3, h4, h5, h6");
+			headings.forEach((heading, index) => {
+				const uniqueId = `heading-${index}-${props.divId}`;
+				heading.id = uniqueId;
+			});
 
 			// 动态注入 Wikipedia 样式
 			const styles = Array.from(doc.querySelectorAll('link[rel="stylesheet"]'));

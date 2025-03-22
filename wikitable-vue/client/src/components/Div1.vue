@@ -4,9 +4,9 @@
 		divId="div1"
 		selectContentClass="selectContent1" /> -->
 	<ParentComponent
-		pageTitle="LeBron James"
+		pageTitle="Kevin Durant"
 		divId="div1"
-		selectContentClass="custom-class" />
+		selectContentClass="selectContent1" />
 </template>
 
 <script setup>

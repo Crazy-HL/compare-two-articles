@@ -4,7 +4,7 @@
 		divId="div3"
 		selectContentClass="selectContent2" /> -->
 	<ParentComponent
-		pageTitle="Jimmer Fredette"
+		pageTitle="Kobe Bryant"
 		divId="div3"
 		selectContentClass="selectContent2" />
 </template>
