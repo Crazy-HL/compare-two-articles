@@ -46,7 +46,7 @@
 </template>
 
 <script setup>
-	import { ref, computed, onMounted, onUnmounted } from "vue";
+	import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 	import * as d3 from "d3";
 	import bus from "@/js/eventBus.js";
 	import {
@@ -63,7 +63,8 @@
 		visible: Boolean,
 		content: String,
 		containerClass: String,
-		containerRef: String
+		containerRef: String,
+		sourceId: String // 新增：当前选中的章节 ID
 	});
 
 	const emit = defineEmits(["close"]);
@@ -88,6 +89,13 @@
 		emit("close");
 	};
 
+	// 监听 content 变化
+	// watch(
+	// 	() => props.content,
+	// 	newContent => {
+	// 		console.log("Popup content updated:", newContent); // 调试日志
+	// 	}
+	// );
 	const switchView = async view => {
 		currentView.value = view;
 		if (view === "visual") {
@@ -336,7 +344,7 @@
 	}
 
 	::v-deep .custom-table {
-		width: 100%;
+		width: 80%;
 		border-collapse: collapse;
 		margin: 5px auto;
 		background-color: #ffffff;
@@ -344,7 +352,7 @@
 		border-radius: 8px;
 		overflow: hidden;
 		font-family: "Arial", sans-serif;
-		font-size: 16px;
+		font-size: 16px; /* 调小字体大小 */
 		color: #333333;
 	}
 
@@ -353,16 +361,15 @@
 		font-weight: bold;
 		color: #ffffff;
 		text-align: left;
-		padding: 12px;
+		padding: 4px; /* 调小内边距 */
 		border: 1px solid #0077b6;
-		font-size: 18px;
+		font-size: 18px; /* 调小标题字体大小 */
 	}
 
-	::v-deep .custom-table th,
 	::v-deep .custom-table td {
-		padding: 12px;
+		padding: 4px; /* 调小内边距 */
 		border: 1px solid #0077b6;
-		font-size: 16px;
+		font-size: 16px; /* 调小内容字体大小 */
 	}
 
 	::v-deep .custom-table tr:hover {

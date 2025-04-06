@@ -19,12 +19,7 @@
 
 		<!-- 视觉内容容器 -->
 		<div class="vis-container">
-			<!-- 可用于显示图形或其他内容 -->
-			<div
-				ref="chart"
-				class="chart-container"
-				draggable="true"
-				@dragstart="handleDragStart"></div>
+			<CompareTable :div1-raw-data="div1RawData" :div3-raw-data="div3RawData" />
 
 			<!-- 输入框和操作按钮 -->
 			<div class="input-container">
@@ -35,7 +30,9 @@
 				<div class="button-container">
 					<button @click="askQuestion">发送</button>
 					<!-- <button @click="compareTexts">对比文章</button> -->
-					<button @click="mergedJson" class="submit-btn">合并数据可视化</button>
+					<!-- <button @click="compareTexts" class="submit-btn">
+						合并数据可视化
+					</button> -->
 				</div>
 			</div>
 		</div>
@@ -45,6 +42,7 @@
 <script setup>
 	import { ref, onMounted, onUnmounted } from "vue";
 	import bus from "@/js/eventBus.js";
+	import CompareTable from "@/components/compoents_base/CompareTable.vue";
 	import * as d3 from "d3";
 	import {
 		renderLineChart,
@@ -62,20 +60,22 @@
 	const selectText3 = ref(""); // 右侧选中文本
 	const currentChartData = ref(null); // 当前图表数据
 	const currentChartType = ref(null); // 当前图表类型
+	const div1RawData = ref(null);
+	const div3RawData = ref(null);
 
 	// 定义回调函数
 	const handleDiv1Event = data => handleSelection(data, "div1");
 	const handleDiv3Event = data => handleSelection(data, "div3");
 
 	onMounted(() => {
-		bus.on("div1Event", handleDiv1Event);
-		bus.on("div3Event", handleDiv3Event);
+		bus.on("div1_Event", handleDiv1Event);
+		bus.on("div3_Event", handleDiv3Event);
 	});
 
 	onUnmounted(() => {
 		// 解绑事件
-		bus.off("div1Event", handleDiv1Event);
-		bus.off("div3Event", handleDiv3Event);
+		bus.off("div1_Event", handleDiv1Event);
+		bus.off("div3_Event", handleDiv3Event);
 	});
 
 	// 处理选中文本
@@ -84,8 +84,10 @@
 		const plainText = getPlainTextFromSelection(data.content);
 		if (source === "div1") {
 			selectText2.value = plainText;
+			div1RawData.value = data.content; // 直接传递原始HTML
 		} else if (source === "div3") {
 			selectText3.value = plainText;
+			div3RawData.value = data.content; // 直接传递原始HTML
 		}
 	}
 

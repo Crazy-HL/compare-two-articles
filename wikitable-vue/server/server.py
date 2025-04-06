@@ -12,7 +12,8 @@ from tool.chart_formats import (
     get_histogram_format,
     get_stacked_bar_chart_format,
     get_scatter_plot_format,
-    get_radar_chart_format
+    get_radar_chart_format,
+    get_table_format
 )
 from tool.json_extractor import extract_json
 
@@ -515,6 +516,134 @@ class OutlineMatchHandler(tornado.web.RequestHandler):
                 "message": "文本匹配时出错"
             }))
 
+class TableAttributesHandler(tornado.web.RequestHandler):
+    def set_default_headers(self):
+        self.set_header("Access-Control-Allow-Origin", "*")
+        self.set_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+        self.set_header("Access-Control-Allow-Headers", "Content-Type")
+
+    def options(self):
+        self.set_status(204)
+        self.finish()
+
+    def post(self):
+        try:
+            data = json.loads(self.request.body)
+            table1 = data.get("table1")
+            table2 = data.get("table2")
+            
+            global json1_data
+            json1_data = chat(f"""
+            将{table1}按照下面举例的 JSON 格式输出（内容需要自行分析，要符合提取的数据内容）：{get_table_format}
+            预期输出: 你的响应应该是一个由花括号包裹的 JSON 格式的数据，该数据要符合规范
+            （例如：1、不要添加\减少括号或逗号等；
+            2、属性值要正确等；3、不要添加任何额外的解释或理由），
+            同时花括号外也不带任何额外的解释或理由，同时数据中的非数值应该被替换为0（例如null、undefind等）。
+            """)
+            global json2_data
+            json2_data = chat(f"""
+            将{table2}按照下面举例的 JSON 格式输出（内容需要自行分析，要符合提取的数据内容）：{get_table_format}
+            预期输出: 你的响应应该是一个由花括号包裹的 JSON 格式的数据，该数据要符合规范
+            （例如：1、不要添加\减少括号或逗号等；
+            2、属性值要正确等；3、不要添加任何额外的解释或理由），
+            同时花括号外也不带任何额外的解释或理由，同时数据中的非数值应该被替换为0（例如null、undefind等）。
+            """)
+            
+            print("Article 1 data:", json1_data)
+            print("Article 2 data:", json2_data)
+            # 提取JSON数据
+            json1_data = extract_json(json1_data)
+            json2_data = extract_json(json2_data)
+            
+            print("Article 1 data:", json1_data)
+            print("Article 2 data:", json2_data)
+        
+            
+            # 4. 返回结果
+            self.write(json.dumps({
+                "json1_data":json1_data,
+                "json2_data":json2_data
+            }))
+            
+        except Exception as e:
+            self.write(json.dumps({
+                "error": str(e),
+                "message": "对比文章时出错"
+            }))
+
+class TableComparisonHandler(tornado.web.RequestHandler):
+    def set_default_headers(self):
+        self.set_header("Access-Control-Allow-Origin", "*")
+        self.set_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+        self.set_header("Access-Control-Allow-Headers", "Content-Type")
+
+    def options(self):
+        self.set_status(204)
+        self.finish()
+
+    def post(self):
+        try:
+            data = json.loads(self.request.body)
+            table1 = data.get("table1")
+            table2 = data.get("table2")
+            common_attributes = data.get("commonAttributes", [])
+            print('数据处理中。。。。。')
+            # print('table1:',table1)
+            # print('table2:',table2)
+            # print('common_attributes:',common_attributes)
+            
+            if not table1 or not table2:
+                raise ValueError("需要提供两个表格的数据")
+            
+            # 分析每个公共属性
+            analysis_results = []
+            for attr in common_attributes:
+                # 获取两个表格中该属性的数据
+                attr_data1 = table1.get("timeSeriesData", {}).get(attr, [])
+                attr_data2 = table2.get("timeSeriesData", {}).get(attr, [])
+                
+                # 调用大模型进行分析
+                # analysis = chat(f"""
+                # 请分析比较以下两个表格中'{attr}'属性的数据:
+                
+                # 表格1 '{table1.get('title', '表格1')}' 数据:
+                # {json.dumps(attr_data1, ensure_ascii=False)}
+                
+                # 表格2 '{table2.get('title', '表格2')}' 数据:
+                # {json.dumps(attr_data2, ensure_ascii=False)}
+                
+                # 请从以下方面进行分析:
+                # 1. 数据趋势比较
+                # 2. 数值大小比较
+                # 3. 异常值或特殊模式
+                # 4. 可能的关联性或差异原因
+                
+                # 用Markdown格式返回分析结果，包含###标题、**强调**和列表项。
+                # """)
+
+                analysis = chat(f"""
+                1+1=?
+                """)
+                
+                analysis_results.append({
+                    "attribute": attr,
+                    "analysis": analysis
+                })
+            
+            # 返回结果
+            self.write(json.dumps({
+                "success": True,
+                "results": analysis_results,
+                "table1Title": table1.get("title", "表格1"),
+                "table2Title": table2.get("title", "表格2")
+            }))
+            
+        except Exception as e:
+            self.write(json.dumps({
+                "success": False,
+                "error": str(e),
+                "message": "分析表格属性时出错"
+            }))
 
 def make_app():
     return tornado.web.Application([
@@ -527,6 +656,8 @@ def make_app():
         (r"/analyze_chart", AnalyzeChartHandler),  # 新增图表分析接口
         (r"/gpt_ask_chart", GPTAskChartHandler),  # 新增图表提问接口
         (r"/outline_match", OutlineMatchHandler),  # 新增大纲章节匹配接口
+        (r"/table_attributes", TableAttributesHandler),  # 新增的属性对比接口
+        (r"/compare_table_attributes", TableComparisonHandler),  
     ], debug=True)
 
 if __name__ == "__main__":

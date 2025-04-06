@@ -41,43 +41,8 @@
 	.wikipedia-content {
 		max-width: 800px;
 		margin: 0 auto;
-		padding: 20px;
+		padding: 10px;
 		font-family: sans-serif;
 		font-size: 0.6vw;
-	}
-
-	::v-deep .custom-table {
-		width: 100%;
-		border-collapse: collapse;
-		margin: 5px auto;
-		background-color: #ffffff;
-		border: 1px solid #0077b6;
-		border-radius: 8px;
-		overflow: hidden;
-		font-family: "Arial", sans-serif;
-		font-size: 16px;
-		color: #333333;
-	}
-
-	::v-deep .custom-table th {
-		background-color: #0077b6;
-		font-weight: bold;
-		color: #ffffff;
-		text-align: left;
-		padding: 12px;
-		border: 1px solid #0077b6;
-		font-size: 18px;
-	}
-
-	::v-deep .custom-table th,
-	::v-deep .custom-table td {
-		padding: 12px;
-		border: 1px solid #0077b6;
-		font-size: 16px;
-	}
-
-	::v-deep .custom-table tr:hover {
-		background-color: #cbe8f6;
-		transition: background-color 0.3s ease-in-out;
 	}
 </style>

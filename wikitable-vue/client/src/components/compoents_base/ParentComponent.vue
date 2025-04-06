@@ -43,7 +43,8 @@
 	const props = defineProps({
 		pageTitle: String,
 		divId: String,
-		selectContentClass: String
+		selectContentClass: String,
+		linkedOutline: Array
 	});
 
 	const pageHtml = ref(""); // 文章 HTML 内容
@@ -73,6 +74,12 @@
 			headings.forEach((heading, index) => {
 				const uniqueId = `heading-${index}-${props.divId}`;
 				heading.id = uniqueId;
+			});
+
+			// **给所有表格添加类名 custom-table**
+			const tables = doc.querySelectorAll("table");
+			tables.forEach(table => {
+				table.classList.add("custom-table");
 			});
 
 			// 动态注入 Wikipedia 样式
@@ -121,18 +128,173 @@
 	};
 
 	// **处理选中内容**
+	const extractLinkedChapterContent = (sourceId, sourceContainerId) => {
+		// console.log("Extracting linked chapter content for:", sourceId); // 调试日志
+
+		// 检查 linkedOutline 是否存在
+		if (!props.linkedOutline) {
+			console.error("LinkedOutline is undefined!");
+			return { linkedItem: null, chapterContent: "" };
+		}
+
+		// 找到关联章节的 ID
+		const linkedItem = props.linkedOutline.find(
+			linked => linked.leftId === sourceId || linked.rightId === sourceId
+		);
+		if (!linkedItem) {
+			// console.log("No linked chapter found for sourceId:", sourceId); // 调试日志
+			return { linkedItem: null, chapterContent: "" };
+		}
+
+		// 确定目标容器和目标章节 ID
+		const targetContainerId = sourceContainerId === "div1" ? "div3" : "div1";
+		const targetId =
+			sourceContainerId === "div1" ? linkedItem.rightId : linkedItem.leftId;
+
+		// 提取目标章节的整个内容
+		const targetContainer = document.getElementById(targetContainerId);
+		if (!targetContainer) return { linkedItem: null, chapterContent: "" };
+
+		const targetElement = targetContainer.querySelector(`#${targetId}`);
+		if (!targetElement) return { linkedItem: null, chapterContent: "" };
+
+		// 提取从当前标题到下一个同级标题之前的所有内容
+		let chapterContent = "";
+		let currentNode = targetElement;
+
+		while (currentNode) {
+			// 如果遇到下一个同级标题，停止提取
+			if (
+				currentNode !== targetElement &&
+				currentNode.nodeType === Node.ELEMENT_NODE &&
+				/^h[1-6]$/i.test(currentNode.tagName)
+			) {
+				break;
+			}
+
+			// 将内容添加到章节内容中
+			if (
+				currentNode.nodeType === Node.ELEMENT_NODE ||
+				currentNode.nodeType === Node.TEXT_NODE
+			) {
+				chapterContent += currentNode.outerHTML || currentNode.textContent;
+			}
+
+			currentNode = currentNode.nextSibling;
+		}
+
+		// console.log("Extracted content:", chapterContent); // 调试日志
+		return { linkedItem, chapterContent };
+	};
+	// **处理选中内容**
 	const handleSelection = content => {
-		// 如果弹出框已经显示并且有内容，则不更新
-		if (showPopup.value[props.divId] && selectedText.value[props.divId]) {
-			console.log("弹出框中已有内容，不更新");
+		// 检查选择的内容是否为表格
+		const isTable = /<table.*?>.*?<\/table>/s.test(content);
+		// console.log("Is table:", isTable); // 调试日志
+
+		// 获取选中的元素
+		const selection = window.getSelection();
+		if (!selection || selection.rangeCount === 0) {
+			console.error("No selection found!"); // 调试日志
 			return;
 		}
 
-		selectedText.value[props.divId] = content; // 根据 divId 存储选中内容
+		// 获取选中的范围
+		const range = selection.getRangeAt(0);
+
+		// 获取选择范围内的所有元素
+		const selectedNodes = range.cloneContents().childNodes;
+		// console.log("Selected nodes:", selectedNodes); // 调试日志
+
+		// 遍历选择范围内的所有元素，找到第一个标题元素
+		let sourceId = undefined;
+		for (const node of selectedNodes) {
+			if (
+				node.nodeType === Node.ELEMENT_NODE &&
+				/^h[1-6]$/i.test(node.tagName)
+			) {
+				sourceId = node.id;
+				break;
+			}
+		}
+
+		// 如果未找到标题元素，尝试从选中范围的起始位置向上查找
+		if (!sourceId) {
+			let startElement = range.startContainer;
+			while (startElement && !/^h[1-6]$/i.test(startElement.tagName)) {
+				startElement = startElement.parentElement;
+			}
+			sourceId = startElement ? startElement.id : undefined;
+		}
+
+		// console.log("Extracted source ID:", sourceId); // 调试日志
+
+		// 如果没有找到标题元素，直接弹出所选内容
+		if (!sourceId) {
+			// console.log("No heading element found, showing selected content only."); // 调试日志
+			selectedText.value[props.divId] = content;
+			console.log(`${props.divId}选中的文字###:`, content);
+			// 传递选中内容
+			bus.emit(`${props.divId}_Event`, { content });
+			showPopup.value[props.divId] = true;
+
+			// 确保弹窗位置更新
+			nextTick(() => {
+				updatePopupPosition();
+			});
+			return;
+		}
+
+		// 调用 handleSelectionWithSourceId 方法
+		handleSelectionWithSourceId(content, sourceId, isTable);
+	};
+
+	const handleSelectionWithSourceId = (content, sourceId, isTable) => {
+		// console.log("Selected content:", content); // 调试日志
+		// console.log("Source ID:", sourceId); // 调试日志
+		// console.log("Is table:", isTable); // 调试日志
+
+		// 存储选中内容
+		selectedText.value[props.divId] = content;
 		console.log(`${props.divId}选中的文字###:`, content);
 		// 传递选中内容
-		bus.emit(`${props.divId}Event`, { content });
-		showPopup.value[props.divId] = true; // 根据 divId 显示弹窗
+		bus.emit(`${props.divId}_Event`, { content });
+		showPopup.value[props.divId] = true;
+
+		// 如果是表格，检查是否有关联章节
+		if (isTable) {
+			// 提取关联章节的整个内容和 linkedItem
+			const { linkedItem, chapterContent } = extractLinkedChapterContent(
+				sourceId,
+				props.divId
+			);
+			// console.log("Linked chapter content:", chapterContent); // 调试日志
+
+			// 如果有关联章节内容
+			if (linkedItem && chapterContent) {
+				// 通知另一个容器弹出关联章节内容
+				const otherContainerId = props.divId === "div1" ? "div3" : "div1";
+				const targetId =
+					props.divId === "div1" ? linkedItem.rightId : linkedItem.leftId;
+
+				// 先滚动到关联章节
+				const targetElement = document.getElementById(targetId);
+				if (targetElement) {
+					targetElement.scrollIntoView({ behavior: "smooth" });
+				}
+
+				console.log(`${otherContainerId}选中的文字???:`, chapterContent);
+				// 传递选中内容
+				bus.emit(`${otherContainerId}_Event`, { content: chapterContent });
+				// 再弹出关联章节内容
+				bus.emit(`${otherContainerId}Event`, {
+					content: chapterContent, // 传递关联章节内容
+					sourceId: sourceId
+				});
+			} else {
+				// console.log("No linked chapter found, skipping auto-popup."); // 调试日志
+			}
+		}
 
 		// 确保弹窗位置更新
 		nextTick(() => {
@@ -177,9 +339,9 @@
 	onMounted(() => {
 		// 确保 divRef 已初始化
 		if (divRef.value) {
-			console.log("divRef 已绑定到 DOM 元素:", divRef.value);
+			// console.log("divRef 已绑定到 DOM 元素:", divRef.value);
 		} else {
-			console.error("divRef 未绑定到 DOM 元素");
+			// console.error("divRef 未绑定到 DOM 元素");
 		}
 		fetchWikipediaContent();
 
@@ -187,6 +349,19 @@
 		if (divRef.value) {
 			divRef.value.addEventListener("scroll", updatePopupPosition);
 		}
+		// 监听另一个容器的事件
+		bus.on(`${props.divId}Event`, ({ content, sourceId }) => {
+			// console.log("Received event:", content, sourceId); // 调试日志
+
+			// 存储关联章节内容
+			selectedText.value[props.divId] = content;
+			showPopup.value[props.divId] = true;
+
+			// 确保弹窗位置更新
+			nextTick(() => {
+				updatePopupPosition();
+			});
+		});
 	});
 
 	// **组件卸载时解绑事件**
@@ -195,6 +370,7 @@
 		if (divRef.value) {
 			divRef.value.removeEventListener("scroll", updatePopupPosition);
 		}
+		bus.off(`${props.divId}Event`);
 	});
 </script>
 

@@ -208,3 +208,15 @@ def get_radar_chart_format():
 					}
 				]
 			}]
+
+
+
+def get_table_format():
+    return[{
+  "title": "表格标题",
+  "rows": ["属性1", "属性2"], 
+  "columns": [
+    { "name": "记录1", "data": {"属性1": "值1", "属性2": "值1"} },
+    { "name": "记录2", "data": {"属性1": "值2", "属性2": "值2"} },
+  ]
+}]

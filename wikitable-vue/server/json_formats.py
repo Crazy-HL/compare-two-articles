@@ -219,3 +219,5 @@ def get_scatter_plot_format():
             }
         }
     }]
+
+
