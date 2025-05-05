@@ -16,7 +16,7 @@ from tool.chart_formats import (
     get_table_format
 )
 from tool.json_extractor import extract_json
-
+import re
 
 # 初始化 OpenAI 客户端
 client = OpenAI(
@@ -71,10 +71,10 @@ def chat(input: str) -> str:
             return assistant_message.content
         except Exception as e:
             if "rate_limit_reached_error" in str(e):
-                print(f"Rate limit reached, retrying in 30 seconds... (Attempt {attempt+1}/{retry_attempts})")
+                #print(f"Rate limit reached, retrying in 30 seconds... (Attempt {attempt+1}/{retry_attempts})")
                 time.sleep(30)  # 等待 30 秒后重试
             else:
-                print(f"Error occurred: {str(e)}")
+                #print(f"Error occurred: {str(e)}")
                 break
     return json.dumps({
         "error": "OpenAI API 调用失败",
@@ -96,12 +96,12 @@ class GPTCompareHandler(tornado.web.RequestHandler):
             data = json.loads(self.request.body)
             text1 = data.get("text1")
             text2 = data.get("text2")
-            print("Comparing text 1 and text 2")
+            #print("Comparing text 1 and text 2")
 
             # 对比文章的逻辑
             global comparison_result
             comparison_result = chat(f"请对比以下两篇文章的内容：\n文章1:\n{text1}\n文章2:\n{text2}")
-            print(f"对比结果：{comparison_result}")
+            #print(f"对比结果：{comparison_result}")
             self.write(json.dumps({"result": comparison_result}))
         except Exception as e:
             self.write(json.dumps({
@@ -126,8 +126,8 @@ class AnalyzeChartHandler(tornado.web.RequestHandler):
             chart_data = data.get("chartData")
             chart_type = data.get("chartType")
 
-            print("接收到的图表数据:", chart_data)  # 调试日志
-            print("接收到的图表类型:", chart_type)  # 调试日志
+            #print("接收到的图表数据:", chart_data)  # 调试日志
+            #print("接收到的图表类型:", chart_type)  # 调试日志
 
             # 调用大模型分析图表
             analysis_result = chat(f"""
@@ -138,14 +138,14 @@ class AnalyzeChartHandler(tornado.web.RequestHandler):
             对于分析结论，同样需要尽可能简洁明了。最后输出内容，要求美观。不需要给出总结性话语。
             """)
 
-            print("大模型分析结果:", analysis_result)  # 调试日志
+            #print("大模型分析结果:", analysis_result)  # 调试日志
 
             # 返回分析结果
             self.write(json.dumps({
                 "analysis": analysis_result  # 确保返回的字段是 analysis
             }))
         except Exception as e:
-            print("图表分析失败:", str(e))  # 调试日志
+            #print("图表分析失败:", str(e))  # 调试日志
             self.write(json.dumps({
                 "error": str(e),
                 "message": "图表分析失败"
@@ -198,7 +198,7 @@ class GPTAskHandler(tornado.web.RequestHandler):
             data = json.loads(self.request.body)
             question = data.get("question")
             global comparison_result  # 获取对比结果
-            print(f"用户问题: {question}, 上下文: {comparison_result}")
+            #print(f"用户问题: {question}, 上下文: {comparison_result}")
             
             # 使用对比结果和用户问题进行对话
             conversation_input = f"以下是文章对比结果：\n{comparison_result}\n用户提问：\n{question}"
@@ -244,7 +244,7 @@ class MergedJsonsHandler(tornado.web.RequestHandler):
             预期输出: 你的响应应该是以下列表中的一个单词{suitable_charts}，不需要额外的解释或理由。
             """)
             chart_classification = chart_classification.strip()
-            print("chart_classification：", chart_classification)
+            #print("chart_classification：", chart_classification)
 
             # 根据不同的图表类型，选择对应的 JSON 格式
             if chart_classification == "Bar Chart":
@@ -293,9 +293,9 @@ class MergedJsonsHandler(tornado.web.RequestHandler):
             同时花括号外也不带任何额外的解释或理由，同时数据中的非数值应该被替换为0（例如null、undefind等）。""")
             # 调用函数提取 JSON 数据
             json_data = extract_json(json_data)
-            print("json1:",json1_data)
-            print("json2:",json2_data)
-            print("json:",json_data)
+            #print("json1:",json1_data)
+            #print("json2:",json2_data)
+            #print("json:",json_data)
             # 返回结果
             self.write(json.dumps({
                 "chart_classification": chart_classification,
@@ -337,7 +337,7 @@ class ProcessTextHandler(tornado.web.RequestHandler):
                             **示例**：文本描述（如“弗雷戴特成为了‘流行文化传奇’”）、理论概念（如“Jimmermania”）、个人意见或主观评价（如“总统奥巴马评价他：‘难以置信。他是全国最好的得分手。很有天赋。’”）。
                             **预期输出**: 您的响应应该是列表["Paragraph","Tabular","Non-Visual"]中的单个单词，不带任何额外的解释或理由。""")
             data_type = data_type.strip()
-            print("data_type:", data_type)
+            #print("data_type:", data_type)
 
             if data_type == 'Non-Visual':
                 # 直接返回结果，不执行后续代码
@@ -360,7 +360,7 @@ class ProcessTextHandler(tornado.web.RequestHandler):
             - 趋势(Trend): 表示数据随时间的变化趋势，如销售额随时间的变化。
             预期输出: 你的响应应该是以下列表中的一个单词 ["Value", "Proportional", "Categorical", "Distribution", "Comparison", "Relational", "Trend"]，不需要额外的解释或理由。""")
             data_classification = data_classification.strip()
-            print("data_classification:", data_classification)
+            #print("data_classification:", data_classification)
 
             # 根据分类判断合适的可视化类型
             if data_classification == "Value":
@@ -386,7 +386,7 @@ class ProcessTextHandler(tornado.web.RequestHandler):
             预期输出: 你的响应应该是以下列表中的一个单词{suitable_charts}，不需要额外的解释或理由。
             """)
             chart_classification = chart_classification.strip()
-            print("chart_classification：", chart_classification)
+            #print("chart_classification：", chart_classification)
 
             # 根据不同的图表类型，选择对应的 JSON 格式
             if chart_classification == "Bar Chart":
@@ -403,7 +403,7 @@ class ProcessTextHandler(tornado.web.RequestHandler):
                 json_format = get_stacked_bar_chart_format()
             elif chart_classification == "Scatter Chart":
                 json_format = get_scatter_plot_format()
-                print("format:",json_format)
+                #print("format:",json_format)
             elif chart_classification == "Radar Chart":
                 json_format = get_radar_chart_format()
             else:
@@ -417,12 +417,12 @@ class ProcessTextHandler(tornado.web.RequestHandler):
             2、属性值要正确等；3、不要添加任何额外的解释或理由），
             同时花括号外也不带任何额外的解释或理由，同时数据中的非数值应该被替换为0（例如null、undefind等）。
             """)
-            print('classification:',chart_classification)
-            print("format:",json_format)
-            print("###:",json_data)
+            #print('classification:',chart_classification)
+            #print("format:",json_format)
+            #print("###:",json_data)
             # 调用函数提取 JSON 数据
             json_data = extract_json(json_data)
-            print("json_data:",json_data)
+            #print("json_data:",json_data)
 
             # 返回结果
             self.write(json.dumps({
@@ -505,7 +505,7 @@ class OutlineMatchHandler(tornado.web.RequestHandler):
             except Exception as e:
                 match_result = []
 
-            print("match_result:",match_result)
+            #print("match_result:",match_result)
             # 返回匹配结果
             self.write(json.dumps({
                 "match_result": match_result  # 返回直接返回匹配的结果数组
@@ -516,7 +516,9 @@ class OutlineMatchHandler(tornado.web.RequestHandler):
                 "message": "文本匹配时出错"
             }))
 
-class TableAttributesHandler(tornado.web.RequestHandler):
+
+
+class CompareAttributesHandler(tornado.web.RequestHandler):
     def set_default_headers(self):
         self.set_header("Access-Control-Allow-Origin", "*")
         self.set_header("Access-Control-Allow-Methods", "POST, OPTIONS")
@@ -529,49 +531,103 @@ class TableAttributesHandler(tornado.web.RequestHandler):
     def post(self):
         try:
             data = json.loads(self.request.body)
-            table1 = data.get("table1")
-            table2 = data.get("table2")
+            chart_data = data.get("chartData")
+            chart_type = data.get("chartType")
+            follow_up = data.get("followUp", False)
+            previous_analysis = data.get("previousAnalysis", "")
+
+            if not chart_data or not chart_type:
+                raise ValueError("缺少必要参数")
+
+            if chart_type == "comparison":
+                if follow_up:
+                    # 处理追问请求
+                    analysis_result = self.handle_followup_request(
+                        chart_data, 
+                        previous_analysis
+                    )
+                else:
+                    # 处理初始对比请求
+                    analysis_result = self.handle_initial_comparison(chart_data)
+                
+                self.write(json.dumps({
+                    "analysis": analysis_result
+                }))
+                return
             
-            global json1_data
-            json1_data = chat(f"""
-            将{table1}按照下面举例的 JSON 格式输出（内容需要自行分析，要符合提取的数据内容）：{get_table_format}
-            预期输出: 你的响应应该是一个由花括号包裹的 JSON 格式的数据，该数据要符合规范
-            （例如：1、不要添加\减少括号或逗号等；
-            2、属性值要正确等；3、不要添加任何额外的解释或理由），
-            同时花括号外也不带任何额外的解释或理由，同时数据中的非数值应该被替换为0（例如null、undefind等）。
-            """)
-            global json2_data
-            json2_data = chat(f"""
-            将{table2}按照下面举例的 JSON 格式输出（内容需要自行分析，要符合提取的数据内容）：{get_table_format}
-            预期输出: 你的响应应该是一个由花括号包裹的 JSON 格式的数据，该数据要符合规范
-            （例如：1、不要添加\减少括号或逗号等；
-            2、属性值要正确等；3、不要添加任何额外的解释或理由），
-            同时花括号外也不带任何额外的解释或理由，同时数据中的非数值应该被替换为0（例如null、undefind等）。
-            """)
-            
-            print("Article 1 data:", json1_data)
-            print("Article 2 data:", json2_data)
-            # 提取JSON数据
-            json1_data = extract_json(json1_data)
-            json2_data = extract_json(json2_data)
-            
-            print("Article 1 data:", json1_data)
-            print("Article 2 data:", json2_data)
+            self.write(json.dumps({
+                "error": "Unsupported chart type",
+                "message": "不支持的分析类型"
+            }))
+        except Exception as e:
+            self.write(json.dumps({
+                "error": str(e),
+                "message": "分析失败"
+            }))
+
+    def handle_initial_comparison(self, chart_data):
+        """处理初始属性对比请求"""
+        left_data = chart_data.get("leftData", [])
+        right_data = chart_data.get("rightData", [])
+        left_title = chart_data.get("leftTitle", "左侧数据")
+        right_title = chart_data.get("rightTitle", "右侧数据")
+        field_key = chart_data.get("fieldKey", "当前属性")
         
-            
-            # 4. 返回结果
-            self.write(json.dumps({
-                "json1_data":json1_data,
-                "json2_data":json2_data
-            }))
-            
-        except Exception as e:
-            self.write(json.dumps({
-                "error": str(e),
-                "message": "对比文章时出错"
-            }))
+        prompt = f"""
+        请对比分析以下两组数据的{field_key}属性：
+        {left_title} 数据: {json.dumps(left_data, ensure_ascii=False)}
+        {right_title} 数据: {json.dumps(right_data, ensure_ascii=False)}
+        
+        要求：
+        1. 只输出最终结论，不要列出具体数据或分析过程
+        2. 结论需简明扼要，突出差异点
+        3. 使用Markdown格式，可加粗关键词
+        4. 结论必须基于以上数据，不能添加额外信息
+        """
+        
+        return chat(prompt)
 
-class TableComparisonHandler(tornado.web.RequestHandler):
+    def handle_followup_request(self, chart_data, previous_analysis):
+        prompt = f"""
+        请为每个国家生成一条完整的因果链，严格遵循以下格式：
+
+        ## 韩国
+        经济结构 (服务业占比58.4%) → 内需驱动 (消费增长3.2%) → 产业政策 (研发投入占GDP4.5%) → 出口竞争力 (贸易顺差$89亿) → GDP增长 (2.3%)
+
+        ## 日本
+        财政状况 (政府债务263.9%GDP) → 政策受限 (公共投资下降2.1%) → 内需不足 (私人消费增长0.7%) → 企业投资 (设备投资下降1.8%) → GDP增长 (0.8%)
+
+        要求：
+        1. 每个国家只生成一条因果链，4-6个环节
+        2. 每个环节格式：因素描述 (数据证据)
+        3. 数据证据必须用括号包裹
+        4. 使用"→"符号连接各环节
+        5. 确保数据来自提供的infobox
+        6. 确保每个环节都有明确的数据支撑
+        """
+        
+        result = chat(prompt)
+        
+        # 格式校验和修正
+        lines = []
+        for line in result.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+            if '→' in line:
+                # 标准化箭头格式
+                line = line.replace('→', ' → ')
+                # 标准化括号格式
+                line = line.replace('（', '(').replace('）', ')')
+                # 确保每个环节都有数据
+                if '(' not in line:
+                    parts = line.split('→')
+                    line = ' → '.join([f"{p.strip()} (数据)" if '(' not in p else p for p in parts])
+            lines.append(line)
+        
+        return '\n'.join(lines)
+
+class AskInfoboxHandler(tornado.web.RequestHandler):
     def set_default_headers(self):
         self.set_header("Access-Control-Allow-Origin", "*")
         self.set_header("Access-Control-Allow-Methods", "POST, OPTIONS")
@@ -584,80 +640,48 @@ class TableComparisonHandler(tornado.web.RequestHandler):
     def post(self):
         try:
             data = json.loads(self.request.body)
-            table1 = data.get("table1")
-            table2 = data.get("table2")
-            common_attributes = data.get("commonAttributes", [])
-            print('数据处理中。。。。。')
-            # print('table1:',table1)
-            # print('table2:',table2)
-            # print('common_attributes:',common_attributes)
-            
-            if not table1 or not table2:
-                raise ValueError("需要提供两个表格的数据")
-            
-            # 分析每个公共属性
-            analysis_results = []
-            for attr in common_attributes:
-                # 获取两个表格中该属性的数据
-                attr_data1 = table1.get("timeSeriesData", {}).get(attr, [])
-                attr_data2 = table2.get("timeSeriesData", {}).get(attr, [])
-                
-                # 调用大模型进行分析
-                # analysis = chat(f"""
-                # 请分析比较以下两个表格中'{attr}'属性的数据:
-                
-                # 表格1 '{table1.get('title', '表格1')}' 数据:
-                # {json.dumps(attr_data1, ensure_ascii=False)}
-                
-                # 表格2 '{table2.get('title', '表格2')}' 数据:
-                # {json.dumps(attr_data2, ensure_ascii=False)}
-                
-                # 请从以下方面进行分析:
-                # 1. 数据趋势比较
-                # 2. 数值大小比较
-                # 3. 异常值或特殊模式
-                # 4. 可能的关联性或差异原因
-                
-                # 用Markdown格式返回分析结果，包含###标题、**强调**和列表项。
-                # """)
+            question = data.get("question")
+            left_infobox = data.get("leftInfobox", {})
+            right_infobox = data.get("rightInfobox", {})
 
-                analysis = chat(f"""
-                1+1=?
-                """)
-                
-                analysis_results.append({
-                    "attribute": attr,
-                    "analysis": analysis
-                })
+            if not question:
+                raise ValueError("问题不能为空")
+
+            # 处理普通问题
+            prompt = f"""
+            用户问题: {question}
             
-            # 返回结果
-            self.write(json.dumps({
-                "success": True,
-                "results": analysis_results,
-                "table1Title": table1.get("title", "表格1"),
-                "table2Title": table2.get("title", "表格2")
-            }))
+            回答要求:
+            1、自行判断是否需要用到infobox数据，如果用到infobox数据，要严格基于以下提供的信息框数据回答
+            2. 如果数据不足或无法回答，请明确说明
+            3. 除了解释名词外，不要参考任何其他知识或信息
+            4. 使用简洁明了的语言
+            
+            左侧infobox数据:
+            {json.dumps(left_infobox, indent=2, ensure_ascii=False)}
+            
+            右侧infobox数据:
+            {json.dumps(right_infobox, indent=2, ensure_ascii=False)}
+            """
+            
+            analysis_result = chat(prompt)
+            self.write(json.dumps({"answer": analysis_result}))
             
         except Exception as e:
-            self.write(json.dumps({
-                "success": False,
-                "error": str(e),
-                "message": "分析表格属性时出错"
-            }))
-
+            self.write(json.dumps({"error": str(e)}))
 def make_app():
     return tornado.web.Application([
         (r"/", MainHandler),
         (r"/html", HtmlHandler),
-        (r"/gpt_compare", GPTCompareHandler),  # 对比文章接口
-        (r"/gpt_ask", GPTAskHandler),  # 提问接口
-        (r"/process_text", ProcessTextHandler),  # 新增的处理文章内容接口
-        (r"/merged_json",MergedJsonsHandler), #合并json数据
-        (r"/analyze_chart", AnalyzeChartHandler),  # 新增图表分析接口
-        (r"/gpt_ask_chart", GPTAskChartHandler),  # 新增图表提问接口
-        (r"/outline_match", OutlineMatchHandler),  # 新增大纲章节匹配接口
-        (r"/table_attributes", TableAttributesHandler),  # 新增的属性对比接口
-        (r"/compare_table_attributes", TableComparisonHandler),  
+        (r"/gpt_compare", GPTCompareHandler),
+        (r"/gpt_ask", GPTAskHandler),
+        (r"/process_text", ProcessTextHandler),
+        (r"/merged_json", MergedJsonsHandler),
+        (r"/analyze_chart", AnalyzeChartHandler),
+        (r"/gpt_ask_chart", GPTAskChartHandler),
+        (r"/outline_match", OutlineMatchHandler),
+        (r"/compare_attributes", CompareAttributesHandler),
+        (r"/ask_infobox",AskInfoboxHandler),
     ], debug=True)
 
 if __name__ == "__main__":

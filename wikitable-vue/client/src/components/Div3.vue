@@ -10,7 +10,7 @@
 		:linkedOutline="linkedOutline" /> -->
 
 	<ParentComponent
-		pageTitle="Economy of the United States"
+		pageTitle="Economy of Japan"
 		divId="div3"
 		selectContentClass="selectContent2"
 		:linkedOutline="linkedOutline" />

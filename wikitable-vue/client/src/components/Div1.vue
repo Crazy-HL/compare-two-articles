@@ -9,7 +9,7 @@
 		selectContentClass="selectContent1"
 		:linkedOutline="linkedOutline" /> -->
 	<ParentComponent
-		pageTitle="Economy of China"
+		pageTitle="Economy of South Korea"
 		divId="div1"
 		selectContentClass="selectContent1"
 		:linkedOutline="linkedOutline" />

@@ -1,38 +1,48 @@
 <template>
 	<div class="main-container">
-		<!-- 聊天容器 -->
-		<div class="chat-container" @dragover.prevent @drop="handleDrop">
-			<!-- 历史对话记录 -->
+		<div class="chat-container">
 			<div class="chat-history">
 				<div
 					v-for="(message, index) in chatHistory"
 					:key="index"
-					:class="['message', message.role]">
-					<div class="message-content">
-						<strong>{{ message.role === "user" ? "用户" : "GPT" }}:</strong>
-						<p v-html="message.content"></p>
-						<!-- 使用 v-html 渲染 HTML 内容 -->
+					:class="['message', message.role, { error: message.error }]">
+					<div class="message-content" v-html="message.content"></div>
+					<CausalFlowChart
+						v-if="message.isCausalFlow"
+						:chains="message.causalChains"
+						class="causal-flow-container" />
+				</div>
+				<div v-if="isLoading" class="loading-indicator">
+					<div class="loading-spinner"></div>
+					正在处理中...
+				</div>
+				<div v-if="showSuggestedQuestion" class="suggested-question">
+					<div class="suggestion-text">建议深入分析的问题：</div>
+					<div class="suggestion-content" @click="useSuggestedQuestion">
+						{{ suggestedQuestion }}
 					</div>
 				</div>
 			</div>
 		</div>
 
-		<!-- 视觉内容容器 -->
 		<div class="vis-container">
-			<CompareTable :div1-raw-data="div1RawData" :div3-raw-data="div3RawData" />
-
-			<!-- 输入框和操作按钮 -->
+			<CompareTable
+				class="compare-table"
+				:div1-raw-data="div1RawData"
+				:div3-raw-data="div3RawData"
+				@compareAttribute="handleAttributeComparison" />
+		</div>
+		<div class="input-area">
 			<div class="input-container">
 				<textarea
 					v-model="userQuestion"
 					rows="2"
-					placeholder="请输入你想问的问题..."></textarea>
+					placeholder="请输入你想问的问题..."
+					:disabled="isLoading"></textarea>
 				<div class="button-container">
-					<button @click="askQuestion">发送</button>
-					<!-- <button @click="compareTexts">对比文章</button> -->
-					<!-- <button @click="compareTexts" class="submit-btn">
-						合并数据可视化
-					</button> -->
+					<button @click="askQuestion" :disabled="isLoading">
+						{{ isLoading ? "处理中..." : "发送" }}
+					</button>
 				</div>
 			</div>
 		</div>
@@ -40,482 +50,768 @@
 </template>
 
 <script setup>
-	import { ref, onMounted, onUnmounted } from "vue";
+	import { ref, onMounted, onUnmounted, watch, nextTick } from "vue";
 	import bus from "@/js/eventBus.js";
 	import CompareTable from "@/components/compoents_base/CompareTable.vue";
-	import * as d3 from "d3";
-	import {
-		renderLineChart,
-		renderBarChart,
-		renderPieChart,
-		renderNonVisualChart,
-		renderRadarChart,
-		renderStackedBarChart,
-		renderScatterChart
-	} from "@/js/chartUtils";
+	import CausalFlowChart from "@/components/compoents_base/CausalFlowChart.vue";
 
-	const userQuestion = ref(""); // 用户输入的问题
-	const chatHistory = ref([]); // 历史对话记录
-	const selectText2 = ref(""); // 左侧选中文本
-	const selectText3 = ref(""); // 右侧选中文本
-	const currentChartData = ref(null); // 当前图表数据
-	const currentChartType = ref(null); // 当前图表类型
+	const PRESERVED_FIELDS_BY_SECTION = {
+		Statistics: [
+			"Population",
+			"GDP",
+			"GDP rank",
+			"GDP growth",
+			"GDP per capita",
+			"GDP per capita rank",
+			"GDP by sector",
+			"Inflation (CPI)",
+			"Population below poverty line",
+			"Gini coefficient",
+			"Human Development Index",
+			"Corruption Perceptions Index",
+			"Labor force",
+			"Labor force by occupation",
+			"Unemployment",
+			"Average gross salary",
+			"Average net salary",
+			"Main industries"
+		],
+		"Public finances": [
+			"Government debt",
+			"Foreign reserves",
+			"Budget balance",
+			"Revenues",
+			"Expenses",
+			"Economic aid",
+			"Credit rating"
+		]
+	};
+
+	const userQuestion = ref("");
+	const chatHistory = ref([]);
+	const selectText2 = ref("");
+	const selectText3 = ref("");
 	const div1RawData = ref(null);
 	const div3RawData = ref(null);
+	const isLoading = ref(false);
+	const div1InfoboxData = ref(null);
+	const div3InfoboxData = ref(null);
+	const showSuggestedQuestion = ref(false);
+	const suggestedQuestion = ref("");
+	const currentFieldKey = ref("");
+	const leftData = ref(null);
+	const rightData = ref(null);
 
-	// 定义回调函数
+	const loadChatHistory = () => {
+		const saved = localStorage.getItem("chatHistory");
+		if (saved) {
+			try {
+				chatHistory.value = JSON.parse(saved);
+			} catch (e) {
+				console.error("加载聊天记录失败:", e);
+			}
+		}
+	};
+
+	watch(
+		chatHistory,
+		newVal => {
+			localStorage.setItem("chatHistory", JSON.stringify(newVal));
+		},
+		{ deep: true }
+	);
+
+	const scrollToBottom = () => {
+		nextTick(() => {
+			const container = document.querySelector(".chat-history");
+			if (container) {
+				container.scrollTop = container.scrollHeight;
+			}
+		});
+	};
+
+	const getLastAnalysis = () => {
+		const reversed = [...chatHistory.value].reverse();
+		const lastAssistantMsg = reversed.find(
+			msg => msg.role === "assistant" && !msg.error
+		);
+		return lastAssistantMsg ? lastAssistantMsg.content : "";
+	};
+
 	const handleDiv1Event = data => handleSelection(data, "div1");
 	const handleDiv3Event = data => handleSelection(data, "div3");
 
 	onMounted(() => {
+		loadChatHistory();
 		bus.on("div1_Event", handleDiv1Event);
 		bus.on("div3_Event", handleDiv3Event);
+		bus.on("div1_InfoboxData", data => {
+			div1InfoboxData.value = data;
+		});
+		bus.on("div3_InfoboxData", data => {
+			div3InfoboxData.value = data;
+		});
 	});
 
 	onUnmounted(() => {
-		// 解绑事件
 		bus.off("div1_Event", handleDiv1Event);
 		bus.off("div3_Event", handleDiv3Event);
+		bus.off("div1_InfoboxData");
+		bus.off("div3_InfoboxData");
 	});
 
-	// 处理选中文本
 	function handleSelection(data, source) {
-		console.log("Received data:", data); // 调试输出接收到的数据
 		const plainText = getPlainTextFromSelection(data.content);
 		if (source === "div1") {
 			selectText2.value = plainText;
-			div1RawData.value = data.content; // 直接传递原始HTML
+			div1RawData.value = data.content;
 		} else if (source === "div3") {
 			selectText3.value = plainText;
-			div3RawData.value = data.content; // 直接传递原始HTML
+			div3RawData.value = data.content;
 		}
 	}
 
-	// 从 HTML 内容中提取纯文本
 	function getPlainTextFromSelection(htmlContent) {
 		const container = document.createElement("div");
 		container.innerHTML = htmlContent;
-		console.log("Extracted text:", container.innerText); // 输出提取的纯文本
 		return container.innerText || container.textContent || "";
 	}
 
-	// 处理拖拽开始事件
-	const handleDragStart = event => {
-		// 将图表数据传递给拖拽事件
-		event.dataTransfer.setData(
-			"application/json",
-			JSON.stringify({
-				chartData: currentChartData.value,
-				chartType: currentChartType.value
-			})
-		);
-		console.log("拖拽数据已设置:", currentChartData.value); // 调试日志
+	const formatAnalysisResult = text => {
+		if (!text) return "";
+
+		text = text
+			.replace(/^# (.*$)/gm, "<h1>$1</h1>")
+			.replace(/^## (.*$)/gm, "<h2>$1</h2>")
+			.replace(/^### (.*$)/gm, "<h3>$1</h3>")
+			.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+			.replace(/\*(.*?)\*/g, "<em>$1</em>")
+			.replace(/`(.*?)`/g, "<code>$1</code>")
+			.replace(/!\[(.*?)\]\((.*?)\)/g, '<img alt="$1" src="$2">')
+			.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2">$1</a>')
+			.replace(/(?:^|\n)\d+\.\s+(.*)/g, "<li>$1</li>")
+			.replace(/(?:^|\n)-\s+(.*)/g, "<li>$1</li>")
+			.replace(/(?:^|\n)\>\s+(.*)/g, "<blockquote>$1</blockquote>")
+			.replace(/(<li>.*<\/li>)/gs, "<ul>$1</ul>")
+			.replace(/\n\n/g, "<br><br>")
+			.replace(/\n/g, "<br>");
+
+		return `<div class="markdown-content">${text}</div>`;
 	};
 
-	// 处理拖拽释放事件
-	const handleDrop = event => {
-		event.preventDefault();
-		const data = event.dataTransfer.getData("application/json");
-		console.log("接收到的拖拽数据:", data); // 调试日志
+	const extractEssentialData = fieldData => {
+		if (!fieldData) return null;
 
-		if (data) {
-			try {
-				const { chartData, chartType } = JSON.parse(data);
-				console.log("解析后的图表数据:", chartData); // 调试日志
-				console.log("解析后的图表类型:", chartType); // 调试日志
+		const essential = {
+			value: fieldData.value,
+			type: fieldData.type
+		};
 
-				currentChartData.value = chartData;
-				currentChartType.value = chartType;
-				analyzeChart(chartData, chartType); // 调用大模型分析图表
-			} catch (error) {
-				console.error("解析拖拽数据失败:", error);
-			}
-		} else {
-			console.error("未接收到拖拽数据");
-		}
+		if (fieldData.unit) essential.unit = fieldData.unit;
+		if (fieldData.currency) essential.currency = fieldData.currency;
+		if (fieldData.extracted) essential.raw = fieldData.raw;
+
+		return essential;
 	};
 
-	// 分析图表
-	const analyzeChart = (chartData, chartType) => {
-		console.log("正在调用后端接口..."); // 调试日志
+	const simplifyInfobox = infobox => {
+		if (!infobox) return {};
 
-		// 调用大模型分析图表
-		api.post(
-			"analyze_chart",
-			{ chartData, chartType },
-			response => {
-				console.log("后端接口返回的数据:", response); // 调试日志
+		const result = {
+			title: infobox.title,
+			type: infobox.type
+		};
 
-				// 检查 response 是否存在且包含 analysis 字段
-				if (response && response.analysis) {
-					// 格式化分析结果
-					const formattedAnalysis = formatAnalysisResult(response.analysis);
+		if (infobox.sections) {
+			result.sections = {};
 
-					// 将分析结果添加到聊天记录
-					chatHistory.value.push({
-						role: "assistant",
-						content: formattedAnalysis // 使用格式化后的 HTML 内容
-					});
-				} else {
-					console.error("后端返回的数据格式不正确:", response);
-					chatHistory.value.push({
-						role: "assistant",
-						content: "图表分析失败，后端返回的数据格式不正确。"
+			Object.entries(infobox.sections).forEach(([sectionName, sectionData]) => {
+				if (PRESERVED_FIELDS_BY_SECTION[sectionName]) {
+					result.sections[sectionName] = {};
+
+					PRESERVED_FIELDS_BY_SECTION[sectionName].forEach(fieldName => {
+						if (sectionData[fieldName]) {
+							if (Array.isArray(sectionData[fieldName])) {
+								result.sections[sectionName][fieldName] = sectionData[
+									fieldName
+								].map(item => extractEssentialData(item));
+							} else {
+								result.sections[sectionName][fieldName] = extractEssentialData(
+									sectionData[fieldName]
+								);
+							}
+						}
 					});
 				}
-			},
-			error => {
-				// 处理错误
-				console.error("图表分析失败:", error);
-				chatHistory.value.push({
-					role: "assistant",
-					content: "图表分析失败，请稍后重试。"
+			});
+		}
+		return result;
+	};
+
+	const parseCausalChains = text => {
+		const chains = [];
+		const countries = text.split("##").filter(s => s.trim());
+
+		countries.forEach(countrySection => {
+			const countryMatch = countrySection.match(/(韩国|日本)/);
+			if (!countryMatch) return;
+
+			const country = countryMatch[0] === "韩国" ? "korea" : "japan";
+			const chainContent = countrySection.replace(/^.*?\n/, "").trim();
+
+			const steps = chainContent
+				.split("→")
+				.map(step => {
+					const cleanStep = step.trim();
+					const evidenceMatch = cleanStep.match(/\((.*?)\)/);
+					const textPart = evidenceMatch
+						? cleanStep.replace(evidenceMatch[0], "").trim()
+						: cleanStep;
+
+					return {
+						text: textPart,
+						evidence: evidenceMatch ? evidenceMatch[1] : null
+					};
+				})
+				.filter(step => step.text);
+
+			if (steps.length > 0) {
+				chains.push({
+					country,
+					steps: steps.slice(0, 6)
 				});
 			}
-		);
+		});
+
+		return chains;
 	};
 
-	const formatAnalysisResult = text => {
-		// 转换 Markdown 标题
-		text = text.replace(/### (.*)/g, "<h3>$1</h3>");
-
-		// 转换加粗文本
-		text = text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-
-		// 处理换行符
-		text = text.replace(/\n/g, "<br>");
-
-		// 处理列表项（数字编号和短横线）
-		text = text.replace(/(?:^|\n)(\d+\.\s+.*)/g, "<li>$1</li>");
-		text = text.replace(/(?:^|\n)-\s+(.*)/g, "<li>$1</li>");
-
-		// 统一包裹列表项
-		text = text.replace(/(<li>.*<\/li>)/gs, "<ul>$1</ul>");
-
-		return text;
-	};
-
-	// 向 GPT 提问
-	const askQuestion = () => {
-		if (!userQuestion.value) {
-			alert("请输入问题！");
+	const askQuestion = async () => {
+		if (!userQuestion.value.trim()) {
+			chatHistory.value.push({
+				role: "assistant",
+				content: "问题不能为空",
+				timestamp: new Date().toLocaleString(),
+				error: true
+			});
 			return;
 		}
 
-		// 将用户的问题添加到历史记录
-		chatHistory.value.push({ role: "user", content: userQuestion.value });
-
-		// 调用 GPT 提问接口
-		api.post(
-			"gpt_ask_chart",
-			{
-				question: userQuestion.value,
-				chartData: currentChartData.value,
-				chartType: currentChartType.value
-			},
-			response => {
-				// 成功回调
-				console.log("后端接口返回的数据:", response); // 调试日志
-
-				// 格式化 GPT 的回答
-				const formattedAnswer = formatAnalysisResult(response.answer);
-
-				// 将 GPT 的回答添加到历史记录
-				chatHistory.value.push({ role: "assistant", content: formattedAnswer });
-			},
-			error => {
-				// 错误回调
-				console.error("请求失败:", error);
-				chatHistory.value.push({
-					role: "assistant",
-					content: "请求失败，请稍后重试。"
-				});
-			}
-		);
-
-		// 清空输入框
+		const question = userQuestion.value;
+		chatHistory.value.push({
+			role: "user",
+			content: question,
+			timestamp: new Date().toLocaleString()
+		});
 		userQuestion.value = "";
-	};
+		showSuggestedQuestion.value = false;
 
-	// 对比文章
-	async function compareTexts() {
-		if (!selectText2.value || !selectText3.value) {
-			alert("请先选择两段文本！");
-			return;
-		}
+		isLoading.value = true;
 
 		try {
-			api.post(
-				"gpt_compare",
-				{ text1: selectText2.value, text2: selectText3.value },
-				data => {
-					if (data) {
-						// 将对比结果添加到历史记录
-						chatHistory.value.push({ role: "assistant", content: data.result });
-					} else {
-						console.error("对比失败:", data.error);
+			if (
+				currentFieldKey.value &&
+				question.includes("分析") &&
+				question.includes("原因")
+			) {
+				await api.post(
+					"compare_attributes",
+					{
+						chartData: {
+							leftData: leftData.value,
+							rightData: rightData.value,
+							leftTitle: "当前选择",
+							rightTitle: "对比选择",
+							fieldKey: currentFieldKey.value,
+							leftInfobox: simplifyInfobox(div1InfoboxData.value),
+							rightInfobox: simplifyInfobox(div3InfoboxData.value)
+						},
+						chartType: "comparison",
+						followUp: true,
+						previousAnalysis: getLastAnalysis()
+					},
+					response => {
+						const formattedAnswer = formatAnalysisResult(response.analysis);
+						const hasCausalFlow = response.analysis.includes("##");
+
+						chatHistory.value.push({
+							role: "assistant",
+							content: hasCausalFlow ? "以下是因果分析：" : formattedAnswer,
+							isCausalFlow: hasCausalFlow,
+							causalChains: hasCausalFlow
+								? parseCausalChains(response.analysis)
+								: [],
+							timestamp: new Date().toLocaleString()
+						});
+						scrollToBottom();
+					},
+					error => {
+						throw error;
 					}
-				}
-			);
+				);
+			} else if (currentFieldKey.value && !question.includes("分析")) {
+				await api.post(
+					"compare_attributes",
+					{
+						chartData: {
+							leftData: leftData.value,
+							rightData: rightData.value,
+							leftTitle: "当前选择",
+							rightTitle: "对比选择",
+							fieldKey: currentFieldKey.value
+						},
+						chartType: "comparison",
+						followUp: false
+					},
+					response => {
+						const formattedAnswer = formatAnalysisResult(response.analysis);
+						chatHistory.value.push({
+							role: "assistant",
+							content: formattedAnswer,
+							timestamp: new Date().toLocaleString()
+						});
+						suggestedQuestion.value = `请结合其他属性深入分析${currentFieldKey.value}差异的原因`;
+						showSuggestedQuestion.value = true;
+						scrollToBottom();
+					},
+					error => {
+						throw error;
+					}
+				);
+			} else {
+				await api.post(
+					"ask_infobox",
+					{
+						question: question,
+						leftInfobox: simplifyInfobox(div1InfoboxData.value),
+						rightInfobox: simplifyInfobox(div3InfoboxData.value)
+					},
+					response => {
+						const formattedAnswer = formatAnalysisResult(response.answer);
+						chatHistory.value.push({
+							role: "assistant",
+							content: formattedAnswer,
+							timestamp: new Date().toLocaleString()
+						});
+						scrollToBottom();
+					},
+					error => {
+						throw error;
+					}
+				);
+			}
 		} catch (error) {
 			console.error("请求失败:", error);
+			chatHistory.value.push({
+				role: "assistant",
+				content: `请求失败: ${error.message || "未知错误"}`,
+				timestamp: new Date().toLocaleString(),
+				error: true
+			});
+		} finally {
+			isLoading.value = false;
+			scrollToBottom();
 		}
-	}
+	};
 
-	// 合并数据
-	async function mergedJson() {
-		if (!selectText2.value || !selectText3.value) {
-			alert("请先选择两段文本！");
+	const useSuggestedQuestion = () => {
+		userQuestion.value = suggestedQuestion.value;
+		showSuggestedQuestion.value = false;
+		nextTick(() => {
+			document.querySelector(".input-container textarea").focus();
+		});
+	};
+
+	const handleAttributeComparison = async ({
+		fieldKey,
+		leftData: incomingLeftData,
+		rightData: incomingRightData,
+		leftTitle,
+		rightTitle,
+		fieldType,
+		fieldLabel
+	}) => {
+		if (!incomingLeftData || !incomingRightData) {
+			chatHistory.value.push({
+				role: "assistant",
+				content: "请先选择要对比的数据",
+				timestamp: new Date().toLocaleString(),
+				error: true
+			});
 			return;
 		}
 
-		try {
-			api.post(
-				"merged_json",
-				{ text1: selectText2.value, text2: selectText3.value },
-				data => {
-					if (data.error) {
-						console.error("后端返回的错误:", data.error);
-						alert(`处理文章内容时出错: ${data.message}`);
-						return;
-					}
+		leftData.value = incomingLeftData;
+		rightData.value = incomingRightData;
+		currentFieldKey.value = fieldKey;
 
-					const jsonData = data.json_data;
-					currentChartData.value = jsonData;
-					currentChartType.value = data.chart_classification;
-					console.log("后端返回的数据:", jsonData);
-					if (data.yes_no === "no" || !jsonData) {
-						renderNonVisualChart(".chart-container", data, {
-							message: "当前数据无法合并"
-						});
-						return;
-					}
-					renderChart(jsonData, data.chart_classification);
-					// 通过事件总线将 Div1 和 Div3 的 JSON 数据传递给 TextPopup.vue
-					console.log("触发 updateChart1 事件");
-					bus.emit("updateChart1", {
-						divId: "div1",
-						jsonData: data.div1_json,
-						chartType: data.chart_classification
+		isLoading.value = true;
+
+		try {
+			chatHistory.value.push({
+				role: "assistant",
+				content: `正在对比分析<strong>${fieldKey}</strong>属性...`,
+				timestamp: new Date().toLocaleString()
+			});
+
+			const requestPayload = {
+				chartData: {
+					leftData: leftData.value,
+					rightData: rightData.value,
+					leftTitle,
+					rightTitle,
+					fieldKey,
+					fieldType,
+					allFields: Object.keys({
+						...div1InfoboxData.value,
+						...div3InfoboxData.value
+					}),
+					leftInfobox: simplifyInfobox(div1InfoboxData.value),
+					rightInfobox: simplifyInfobox(div3InfoboxData.value)
+				},
+				chartType: "comparison"
+			};
+
+			await api.post(
+				"compare_attributes",
+				requestPayload,
+				response => {
+					const formattedAnalysis = formatAnalysisResult(response.analysis);
+					chatHistory.value.push({
+						role: "assistant",
+						content: formattedAnalysis,
+						timestamp: new Date().toLocaleString()
 					});
-					console.log("触发 updateChart3 事件");
-					bus.emit("updateChart3", {
-						divId: "div3",
-						jsonData: data.div3_json,
-						chartType: data.chart_classification
-					});
+
+					suggestedQuestion.value = `请结合其他属性深入分析得出上述结论的原因`;
+					showSuggestedQuestion.value = true;
+					scrollToBottom();
+				},
+				error => {
+					throw error;
 				}
 			);
 		} catch (error) {
-			console.error("处理JSON时出错:", error);
-			alert("处理JSON时出错，请稍后重试");
-		}
-	}
-
-	// 渲染图表
-	function renderChart(rawJsonData, chartType) {
-		if (!rawJsonData || typeof rawJsonData !== "object") {
-			console.log("rawJsonData:", rawJsonData);
-			console.log("type_rawJsonData:", typeof rawJsonData);
-			renderNonVisualChart(`.${props.containerClass}`, rawJsonData, {
-				message: "JSON 数据无效"
+			console.error("对比分析失败:", error);
+			chatHistory.value.push({
+				role: "assistant",
+				content: `对比分析失败: ${error.message || "未知错误"}`,
+				timestamp: new Date().toLocaleString(),
+				error: true
 			});
-			console.error("JSON 数据无效:", rawJsonData);
-			return;
+		} finally {
+			isLoading.value = false;
+			scrollToBottom();
 		}
-
-		const data = rawJsonData.data;
-		const options = rawJsonData.options || {};
-		// 获取 chart-container 的 DOM 元素
-		const chartContainer = document.querySelector(".chart-container");
-
-		// 根据图表类型渲染
-		if (chartType === "Line Chart") {
-			renderLineChart(chartContainer, data, options);
-		} else if (chartType === "Bar Chart") {
-			renderBarChart(chartContainer, rawJsonData);
-		} else if (chartType === "Pie Chart") {
-			renderPieChart(chartContainer, data, options);
-		} else if (chartType === "Stacked Bar Chart") {
-			renderStackedBarChart(chartContainer, data, options);
-		} else if (chartType === "Radar Chart") {
-			renderRadarChart(chartContainer, rawJsonData);
-		} else if (chartType === "Scatter Chart") {
-			renderScatterChart(chartContainer, rawJsonData);
-		} else {
-			console.error("未知的图表类型:", chartType);
-		}
-	}
+	};
 </script>
 
 <style scoped>
-	/* 主容器 */
 	.main-container {
 		display: flex;
 		flex-direction: column;
-		width: 100%; /* 固定宽度 */
 		height: 100vh;
-		margin: 0 auto;
-		padding: 5px;
-		background-color: #f5f5f5;
+		background: #f5f7fa;
+		overflow: hidden;
 	}
 
-	/* 聊天容器 */
 	.chat-container {
-		flex: 0.5;
-		background-color: #ffffff;
-		padding: 20px;
-		border-radius: 12px;
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-		margin-bottom: 10px;
-	}
-
-	/* 历史对话记录 */
-	.chat-history {
-		flex: 0.5;
-		overflow-y: auto;
-		height: 95%;
-		/* max-height: 200px; */
-		padding: 10px;
-		background-color: #fafafa;
-		border-radius: 8px;
-		border: 1px solid #e0e0e0;
-		margin-bottom: 20px;
-	}
-
-	/* 消息样式 */
-	.message {
-		margin-bottom: 15px;
-	}
-
-	.message-content {
-		padding: 12px;
-		border-radius: 8px;
-		background-color: #f0f0f0;
-		line-height: 1.5;
-	}
-
-	.message.user .message-content {
-		background-color: #e3f2fd;
-		text-align: right;
-	}
-
-	.message.assistant .message-content {
-		background-color: #f5f5f5;
-		text-align: left;
-	}
-
-	/* 分析结果的样式 */
-	.message-content p {
-		font-family: Arial, sans-serif;
-		line-height: 1.6;
-		color: #333;
-	}
-
-	.message-content h3 {
-		font-size: 1.2em;
-		font-weight: bold;
-		margin: 10px 0;
-		color: #0077b6;
-	}
-
-	.message-content strong {
-		font-weight: bold;
-		color: #d90429;
-	}
-
-	.message-content ul {
-		margin: 10px 0;
-		padding-left: 20px;
-	}
-
-	.message-content li {
-		margin-bottom: 5px;
-	}
-
-	.message-content br {
-		display: block;
-		margin: 10px 0;
-	}
-	/* 视觉内容容器 */
-	.vis-container {
-		flex: 1;
-		background-color: #ffffff;
-		border-radius: 12px;
-		border: 1px solid #e0e0e0;
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-		padding: 20px;
+		height: 50vh;
+		min-height: 50vh;
+		overflow: hidden;
 		display: flex;
 		flex-direction: column;
-		gap: 20px;
+		margin: 10px;
 	}
 
-	.chart-container {
+	.chat-history {
 		flex: 1;
+		overflow-y: auto;
+		padding: 20px;
+		background: #ffffff;
+		border-radius: 12px;
+		box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+		scroll-behavior: smooth;
+		border: 1px solid #e0e0e0;
+	}
+
+	.vis-container {
+		height: 30vh;
+		min-height: 30vh;
+		padding: 10px;
+		background: #ffffff;
+		border-radius: 12px;
+		margin: 0 10px;
+		box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+		overflow: auto;
+		border: 1px solid #e0e0e0;
+	}
+
+	.compare-table {
 		width: 100%;
 		height: 100%;
 	}
 
-	/* 输入框和按钮容器 */
+	.input-area {
+		height: 15vh;
+		min-height: 15vh;
+		padding: 15px;
+		background: #ffffff;
+		border-top: 1px solid #e0e0e0;
+		flex-shrink: 0;
+	}
+
+	.message {
+		margin-bottom: 20px;
+		padding: 15px 20px;
+		border-radius: 12px;
+		line-height: 1.6;
+		position: relative;
+		max-width: 85%;
+		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+	}
+
+	.message.user {
+		background: #e3f2fd;
+		margin-left: auto;
+		border-bottom-right-radius: 4px;
+		border: 1px solid #bbdefb;
+	}
+
+	.message.assistant {
+		background: #f8f9fa;
+		margin-right: auto;
+		border-bottom-left-radius: 4px;
+		border: 1px solid #e0e0e0;
+	}
+
+	.message.error {
+		background: #ffebee;
+		border-left: 4px solid #f44336;
+	}
+
+	.message-content {
+		word-wrap: break-word;
+	}
+
 	.input-container {
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
+		background: #ffffff;
+		border-radius: 12px;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+		height: 100%;
+		border: 1px solid #e0e0e0;
 	}
 
-	textarea {
+	.input-container textarea {
 		width: 100%;
-		height: 80px;
+		padding: 12px 16px;
+		border: none;
+		border-radius: 12px;
 		resize: none;
-		padding: 12px;
 		font-size: 14px;
-		border: 1px solid #ddd;
-		border-radius: 8px;
-		background-color: #fafafa;
-		transition: border-color 0.3s ease;
+		outline: none;
+		background: #f9f9f9;
 	}
 
-	textarea:focus {
-		outline: none;
-		border-color: #4caf50;
+	.input-container textarea:focus {
+		background: #ffffff;
 	}
 
 	.button-container {
 		display: flex;
-		justify-content: space-between;
-		gap: 10px;
+		justify-content: flex-end;
+		padding: 8px;
 	}
 
-	button {
-		flex: 1; /* 按钮宽度占满容器 */
-		padding: 10px 20px;
-		background-color: #4caf50;
+	.button-container button {
+		background: #4285f4;
 		color: white;
 		border: none;
+		padding: 8px 20px;
 		border-radius: 8px;
 		cursor: pointer;
 		font-size: 14px;
-		transition: background-color 0.3s ease;
+		font-weight: 500;
+		transition: all 0.2s;
 	}
 
-	button:hover {
-		background-color: #45a049;
+	.button-container button:hover {
+		background: #3367d6;
+		transform: translateY(-1px);
 	}
 
-	button:active {
-		background-color: #3d8b40;
+	.button-container button:disabled {
+		background: #b3c6e0;
+		cursor: not-allowed;
+		transform: none;
 	}
 
-	/* 新增提交按钮样式 */
-	.submit-btn {
-		background-color: #ff9800;
+	.loading-indicator {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 15px;
+		color: #666;
+		font-size: 14px;
 	}
 
-	.submit-btn:hover {
-		background-color: #fb8c00;
+	.loading-spinner {
+		border: 3px solid rgba(66, 133, 244, 0.2);
+		border-radius: 50%;
+		border-top: 3px solid #4285f4;
+		width: 20px;
+		height: 20px;
+		animation: spin 1s linear infinite;
+		margin-right: 10px;
 	}
 
-	.submit-btn:active {
-		background-color: #f57c00;
+	@keyframes spin {
+		0% {
+			transform: rotate(0deg);
+		}
+		100% {
+			transform: rotate(360deg);
+		}
+	}
+
+	.markdown-content {
+		line-height: 1.7;
+		font-size: 15px;
+		color: #333;
+	}
+
+	.markdown-content h1 {
+		font-size: 1.5em;
+		margin: 20px 0 15px;
+		padding-bottom: 5px;
+		border-bottom: 1px solid #eee;
+		color: #2c3e50;
+	}
+
+	.markdown-content h2 {
+		font-size: 1.3em;
+		margin: 18px 0 12px;
+		color: #34495e;
+	}
+
+	.markdown-content h3 {
+		font-size: 1.1em;
+		margin: 15px 0 10px;
+		color: #4285f4;
+	}
+
+	.markdown-content ul,
+	.markdown-content ol {
+		padding-left: 25px;
+		margin: 12px 0;
+	}
+
+	.markdown-content li {
+		margin-bottom: 8px;
+		position: relative;
+	}
+
+	.markdown-content ul li::before {
+		content: "•";
+		color: #4285f4;
+		position: absolute;
+		left: -15px;
+	}
+
+	.markdown-content strong {
+		color: #2c3e50;
+		font-weight: 600;
+	}
+
+	.markdown-content em {
+		color: #666;
+		font-style: italic;
+	}
+
+	.markdown-content code {
+		background: rgba(66, 133, 244, 0.1);
+		padding: 2px 6px;
+		border-radius: 4px;
+		font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+		font-size: 0.9em;
+		color: #d63384;
+	}
+
+	.markdown-content blockquote {
+		border-left: 3px solid #4285f4;
+		padding: 10px 15px;
+		margin: 15px 0;
+		background: rgba(66, 133, 244, 0.05);
+		color: #555;
+	}
+
+	.markdown-content a {
+		color: #4285f4;
+		text-decoration: none;
+		font-weight: 500;
+	}
+
+	.markdown-content a:hover {
+		text-decoration: underline;
+	}
+
+	.suggested-question {
+		margin: 15px 0;
+		padding: 12px;
+		background-color: #f5f7fa;
+		border-radius: 8px;
+		border: 1px dashed #4285f4;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+
+	.suggested-question:hover {
+		background-color: #e8f0fe;
+	}
+
+	.suggestion-text {
+		font-size: 12px;
+		color: #666;
+		margin-bottom: 5px;
+	}
+
+	.suggestion-content {
+		color: #4285f4;
+		font-weight: 500;
+		padding: 5px;
+		border-radius: 4px;
+	}
+
+	.causal-flow-container {
+		width: 100%;
+		max-width: 100%;
+		overflow: hidden;
+		padding: 0 5px;
+		margin-top: 15px;
+		margin-bottom: 5px;
+	}
+
+	@media (max-width: 768px) {
+		.chat-container {
+			height: 45vh;
+			min-height: 45vh;
+		}
+
+		.vis-container {
+			height: 35vh;
+			min-height: 35vh;
+		}
+
+		.input-area {
+			height: 20vh;
+			min-height: 20vh;
+		}
+
+		.message {
+			max-width: 90%;
+			padding: 12px 15px;
+		}
 	}
 </style>
