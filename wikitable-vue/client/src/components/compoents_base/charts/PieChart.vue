@@ -14,13 +14,17 @@
 			default: () => [],
 			validator: value => value.every(item => "name" in item && "value" in item)
 		},
-		showRemainder: {
+		showLegend: {
 			type: Boolean,
-			default: true
+			default: false
+		},
+		isSingleValue: {
+			type: Boolean,
+			default: false
 		}
 	});
 
-	const emit = defineEmits(["itemClick"]);
+	const emit = defineEmits(["itemClick", "dataOutput"]);
 
 	const chartContainer = ref(null);
 	const colors = [
@@ -57,7 +61,8 @@
 	const processedData = computed(() => {
 		if (!hasValidData.value) return [];
 
-		if (filteredData.value.length === 1 && props.showRemainder) {
+		// 如果是单值饼图，添加剩余部分
+		if (props.isSingleValue) {
 			const mainValue = Math.min(
 				100,
 				Math.max(0, Number(filteredData.value[0].value) || 0)
@@ -73,6 +78,7 @@
 			];
 		}
 
+		// 多值饼图直接返回处理后的数据
 		return filteredData.value.map((item, index) => ({
 			...item,
 			value: Math.min(100, Math.max(0, Number(item.value) || 0)),
@@ -141,9 +147,9 @@
 				tooltip
 					.html(
 						`
-            <div class="tooltip-title">${d.data.name}</div>
-            <div class="tooltip-value">${d.data.value.toFixed(1)}%</div>
-          `
+          <div class="tooltip-title">${d.data.name}</div>
+          <div class="tooltip-value">${d.data.value.toFixed(1)}%</div>
+        `
 					)
 					.style("left", event.pageX + 15 + "px")
 					.style("top", event.pageY - 30 + "px");
@@ -157,7 +163,8 @@
 				emit("itemClick", d.data);
 			});
 
-		if (filteredData.value.length === 1) {
+		// 单值饼图显示中心数值
+		if (props.isSingleValue) {
 			pieGroup
 				.append("text")
 				.attr("text-anchor", "middle")
@@ -168,55 +175,44 @@
 				.style("font-weight", "500");
 		}
 
-		// 图注：图形下方多行居中
-		const legendData = processedData.value.filter(d => !d.isRemainder);
-		const legendGroup = svg.append("g").attr("class", "legend");
+		// 多值饼图显示图例
+		if (props.showLegend && !props.isSingleValue) {
+			const legendData = processedData.value.filter(d => !d.isRemainder);
+			const legendGroup = svg.append("g").attr("class", "legend");
 
-		const legendItemWidth = 140;
-		const legendItemHeight = 24;
-		const itemsPerRow = Math.floor(width / legendItemWidth);
-		const numRows = Math.ceil(legendData.length / itemsPerRow);
+			const legendItemHeight = 20;
+			const legendSpacing = 6;
+			const legendPadding = 10;
 
-		legendData.forEach((d, i) => {
-			const row = Math.floor(i / itemsPerRow);
-			const col = i % itemsPerRow;
+			legendData.forEach((d, i) => {
+				const g = legendGroup
+					.append("g")
+					.attr("class", "legend-item")
+					.attr(
+						"transform",
+						`translate(${width - 150}, ${
+							legendPadding + i * (legendItemHeight + legendSpacing)
+						})`
+					)
+					.style("cursor", "pointer")
+					.on("click", () => emit("itemClick", d));
 
-			const itemsThisRow =
-				row === numRows - 1 && legendData.length % itemsPerRow !== 0
-					? legendData.length % itemsPerRow
-					: itemsPerRow;
+				g.append("rect")
+					.attr("width", 14)
+					.attr("height", 14)
+					.attr("rx", 2)
+					.attr("ry", 2)
+					.attr("fill", colors[d.index % colors.length]);
 
-			const rowWidth = itemsThisRow * legendItemWidth;
-			const startX = (width - rowWidth) / 2;
-
-			const g = legendGroup
-				.append("g")
-				.attr("class", "legend-item")
-				.attr(
-					"transform",
-					`translate(${startX + col * legendItemWidth}, ${
-						height - (numRows - row - 1) * legendItemHeight - 10
-					})`
-				)
-				.style("cursor", "pointer")
-				.on("click", () => emit("itemClick", d));
-
-			g.append("rect")
-				.attr("width", 14)
-				.attr("height", 14)
-				.attr("rx", 3)
-				.attr("ry", 3)
-				.attr("fill", colors[i % colors.length])
-				.style("opacity", 0.8);
-
-			g.append("text")
-				.attr("x", 20)
-				.attr("y", 11)
-				.text(`${d.name} (${d.value}%)`)
-				.style("font-size", "12px")
-				.style("fill", "#333")
-				.style("font-family", "Arial, sans-serif");
-		});
+				g.append("text")
+					.attr("x", 20)
+					.attr("y", 11)
+					.text(`${d.name} (${d.value}%)`)
+					.style("font-size", "12px")
+					.style("fill", "#333")
+					.style("font-family", "Arial, sans-serif");
+			});
+		}
 	};
 
 	onMounted(() => {
@@ -224,7 +220,9 @@
 		window.addEventListener("resize", initChart);
 	});
 
-	watch(() => [props.data, props.showRemainder], initChart, { deep: true });
+	watch(() => [props.data, props.showLegend, props.isSingleValue], initChart, {
+		deep: true
+	});
 </script>
 
 <style scoped>

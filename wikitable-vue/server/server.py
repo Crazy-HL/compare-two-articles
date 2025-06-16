@@ -20,7 +20,7 @@ import re
 
 # 初始化 OpenAI 客户端
 client = OpenAI(
-    api_key="sk-vxIw2Mzyk0AZ4cbQUCCiQOjXuuWt7L5eYZpbQy4pfAwvlL56", 
+    api_key="sk-dSXNbY9UIoQ1NkbAhTIlqUaAROD5qzA6n9ZnwKMuFV4r5SyR", 
     base_url="https://api.moonshot.cn/v1",
 )
 
@@ -572,7 +572,8 @@ class CompareAttributesHandler(tornado.web.RequestHandler):
         left_title = chart_data.get("leftTitle", "左侧数据")
         right_title = chart_data.get("rightTitle", "右侧数据")
         field_key = chart_data.get("fieldKey", "当前属性")
-        
+
+
         prompt = f"""
         请对比分析以下两组数据的{field_key}属性：
         {left_title} 数据: {json.dumps(left_data, ensure_ascii=False)}
@@ -583,49 +584,128 @@ class CompareAttributesHandler(tornado.web.RequestHandler):
         2. 结论需简明扼要，突出差异点
         3. 使用Markdown格式，可加粗关键词
         4. 结论必须基于以上数据，不能添加额外信息
+        5.照着下面格式输出：结论：
+韩国经济增长较为稳定，增长率在1.4%到2.3%之间。
+日本经济增长波动较大，增长率从1.5%下降至0.6%。
         """
         
         return chat(prompt)
 
+  
+
     def handle_followup_request(self, chart_data, previous_analysis):
-        prompt = f"""
-        请为每个国家生成一条完整的因果链，严格遵循以下格式：
+            field_key = chart_data.get("fieldKey")
+            left_infobox = chart_data.get("leftInfobox", {})
+            right_infobox = chart_data.get("rightInfobox", {})
+            
+            prompt = f"""
+前面对比了单个属性"{field_key}"，得出了"{previous_analysis}"的结论。请你综合左侧和右侧infobox的其他属性，从宏观经济因素出发，构建每个国家的经济因果链条，**解释为何会得出这个结论**。
 
-        ## 韩国
-        经济结构 (服务业占比58.4%) → 内需驱动 (消费增长3.2%) → 产业政策 (研发投入占GDP4.5%) → 出口竞争力 (贸易顺差$89亿) → GDP增长 (2.3%)
+请以如下**严格的 JSON 格式**输出内容，不需要任何解释或自然语言描述，仅返回合法的 JSON：
 
-        ## 日本
-        财政状况 (政府债务263.9%GDP) → 政策受限 (公共投资下降2.1%) → 内需不足 (私人消费增长0.7%) → 企业投资 (设备投资下降1.8%) → GDP增长 (0.8%)
+{{
+  "country": "korea",
+  "steps": [
+    {{
+      "text": "低失业率+高就业率",
+      "evidence": ["Unemployment: 3.7%", "Labor force: 65.8%"],
+      "used_fields": ["Unemployment", "Labor force"]
+    }},
+    {{
+      "text": "劳动力市场稳定",
+      "evidence": [],
+      "used_fields": []
+    }},
+    {{
+      "text": "人均工资增长",
+      "evidence": ["Average gross salary: 4,583,525 ₩ / US$3,190 monthly"],
+      "used_fields": ["Average gross salary"]
+    }},
+    {{
+      "text": "消费能力提升",
+      "evidence": ["Average net salary: 3,835,828 ₩ / US$2,670 monthly"],
+      "used_fields": ["Average net salary"]
+    }},
+    {{
+      "text": "服务业增长",
+      "evidence": ["GDP by sector: services: 58.4%"],
+      "used_fields": ["GDP by sector"]
+    }},
+    {{
+      "text": "经济稳定增长",
+      "evidence": ["GDP growth: 1.4% (2023)", "GDP growth: 2.3% (2024)"],
+      "used_fields": ["GDP growth"]
+    }}
+  ]
+}},
+{{
+  "country": "japan",
+  "steps": [
+    {{
+      "text": "高政府债务",
+      "evidence": ["Government debt: 263.9% of GDP (2022)"],
+      "used_fields": ["Government debt"]
+    }},
+    {{
+      "text": "财政紧缩",
+      "evidence": ["Budget balance: 1.35% of GDP (2022 est.)"],
+      "used_fields": ["Budget balance"]
+    }},
+    {{
+      "text": "公共支出受限",
+      "evidence": ["Expenses: 43.4% of GDP (2022)"],
+      "used_fields": ["Expenses"]
+    }},
+    {{
+      "text": "内需不足",
+      "evidence": ["GDP by component: Household consumption: 55.6%"],
+      "used_fields": ["GDP by component"]
+    }},
+    {{
+      "text": "经济增长放缓",
+      "evidence": ["GDP growth: 1.5% (2023)", "GDP growth: 0.8% (2024)", "GDP growth: 0.6% (2025)"],
+      "used_fields": ["GDP growth"]
+    }}
+  ]
+}}
 
-        要求：
-        1. 每个国家只生成一条因果链，4-6个环节
-        2. 每个环节格式：因素描述 (数据证据)
-        3. 数据证据必须用括号包裹
-        4. 使用"→"符号连接各环节
-        5. 确保数据来自提供的infobox
-        6. 确保每个环节都有明确的数据支撑
-        """
-        
-        result = chat(prompt)
-        
-        # 格式校验和修正
-        lines = []
-        for line in result.split('\n'):
-            line = line.strip()
-            if not line:
-                continue
-            if '→' in line:
-                # 标准化箭头格式
-                line = line.replace('→', ' → ')
-                # 标准化括号格式
-                line = line.replace('（', '(').replace('）', ')')
-                # 确保每个环节都有数据
-                if '(' not in line:
-                    parts = line.split('→')
-                    line = ' → '.join([f"{p.strip()} (数据)" if '(' not in p else p for p in parts])
-            lines.append(line)
-        
-        return '\n'.join(lines)
+### 要求：
+- 每个国家仅输出一条因果链。
+- 每条链条包含 4~6 个逻辑环节。
+- **每个环节只写单个阶段或因素，不要使用“→”连接前后步骤。**
+- `text` 字段应使用**中文总结性表达**，相关数据支撑应该写在`evidence`数组中，格式为“属性名: 属性值”。
+- 如果在`text`中用到了两个总结性表达，用“+”隔开。
+- 如果用到了 infobox 中的属性，要在 `used_fields` 中列出字段名，未用则为空数组。
+- `evidence` 中每个值都必须是 infobox 中真实存在的字段及其值，不能编造。
+- `evidence` 必须为数组，每个数据点单独作为字符串元素，如果没有，则应为 `[]`。
+- 返回时**不要包含任何额外说明文字，仅是纯粹合法的 JSON 对象。**
+
+左侧infobox数据（韩国）:
+{json.dumps(left_infobox, indent=2, ensure_ascii=False)}
+
+右侧infobox数据（日本）:
+{json.dumps(right_infobox, indent=2, ensure_ascii=False)}
+"""
+
+
+            
+            result = chat(prompt)
+            print("res:",chat(prompt))
+            # 清理Markdown代码块标记和前后空白
+            cleaned_result = re.sub(r'```(json)?|```', '', result).strip()
+            print("clean:",cleaned_result)
+            
+                # 加中括号包成 JSON 数组（如果本来不是的话）
+            json_like = f"[{cleaned_result}]"
+
+            try:
+                json_obj = json.loads(json_like)
+            except json.JSONDecodeError as e:
+                print("❌ JSON解析失败:", e)
+                return {"error": "格式解析失败", "raw": cleaned_result}
+
+            # 成功：转为字符串返回给前端
+            return json.dumps(json_obj, ensure_ascii=False, indent=2)
 
 class AskInfoboxHandler(tornado.web.RequestHandler):
     def set_default_headers(self):

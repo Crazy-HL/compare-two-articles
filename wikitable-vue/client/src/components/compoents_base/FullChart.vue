@@ -34,7 +34,24 @@
 		<!-- 完整折线图 -->
 		<template v-else-if="visualization === 'line-chart'">
 			<div v-if="hasData" class="chart-container">
-				<LineChart :data="lineChartData" :show-trend="true" />
+				<template v-if="isCombinedChart">
+					<LineChart
+						:data="processedCombinedData"
+						:show-trend="true"
+						:is-combined="true"
+						:sources="field.sources" />
+					<div class="chart-legend">
+						<span v-for="(source, index) in field.sources" :key="index">
+							<span
+								class="legend-color"
+								:style="{ backgroundColor: getSourceColor(index) }"></span>
+							{{ source }}
+						</span>
+					</div>
+				</template>
+				<template v-else>
+					<LineChart :data="lineChartData" :show-trend="true" />
+				</template>
 			</div>
 			<div v-else class="no-data">无可用数据</div>
 		</template>
@@ -66,6 +83,55 @@
 		fieldKey: String
 	});
 
+	// 判断是否是合并图表
+	const isCombinedChart = computed(() => {
+		return props.field?.combined === true;
+	});
+
+	// 处理合并图表数据
+	const processedCombinedData = computed(() => {
+		if (!isCombinedChart.value) {
+			console.log("[Debug] 当前不是合并图表模式");
+			return [];
+		}
+
+		console.log(
+			"[Debug] 原始合并数据:",
+			JSON.parse(JSON.stringify(props.field))
+		); // 避免响应式代理干扰
+
+		const years = [...new Set(props.field.map(item => item.year))].sort(
+			(a, b) => a - b
+		);
+		console.log("[Debug] 提取的唯一年份:", years);
+
+		const series = props.field.sources.map((source, index) => {
+			const sourceData = props.field.filter(item => item.source === source);
+			console.log(`[Debug] 数据源 ${source} 的原始数据:`, sourceData);
+			return {
+				name: source,
+				data: years.map(year => {
+					const point = sourceData.find(item => item.year === year);
+					return point ? point.value : null;
+				}),
+				color: getSourceColor(index)
+			};
+		});
+
+		const result = { categories: years, series };
+		console.log(
+			"[Debug] 处理后的合并图表数据:",
+			JSON.parse(JSON.stringify(result))
+		);
+		return result;
+	});
+
+	// 获取数据源颜色
+	const getSourceColor = index => {
+		const colors = ["#4e79a7", "#e15759", "#76b7b2", "#f28e2b"];
+		return colors[index % colors.length];
+	};
+
 	// 数据预处理（统一数据结构）
 	const normalizedData = computed(() => {
 		if (!props.field) return [];
@@ -93,7 +159,8 @@
 				unit: item.unit ?? null,
 				year: item.year ?? null,
 				currency: item.currency ?? null,
-				extracted: item.extracted ?? false
+				extracted: item.extracted ?? false,
+				source: item.source ?? null // 添加来源字段
 			};
 		}
 
@@ -104,7 +171,8 @@
 			unit: null,
 			year: null,
 			currency: null,
-			extracted: false
+			extracted: false,
+			source: null
 		};
 	};
 
@@ -233,5 +301,19 @@
 		color: #999;
 		font-style: italic;
 		font-size: 1.2em;
+	}
+
+	.chart-legend {
+		margin-top: 15px;
+		text-align: center;
+		font-size: 14px;
+	}
+
+	.legend-color {
+		display: inline-block;
+		width: 12px;
+		height: 12px;
+		margin-right: 5px;
+		border-radius: 3px;
 	}
 </style>

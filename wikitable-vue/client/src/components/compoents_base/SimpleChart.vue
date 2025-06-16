@@ -33,6 +33,15 @@
 			<div v-else class="no-data">-</div>
 		</template>
 
+		<!-- 堆叠图 -->
+		<template v-else-if="visualization === 'stacked-chart'">
+			<div
+				v-if="hasData"
+				class="d3-chart-container"
+				ref="stackedContainer"></div>
+			<div v-else class="no-data">-</div>
+		</template>
+
 		<!-- 默认显示 -->
 		<template v-else>
 			<div
@@ -68,6 +77,10 @@
 			fieldKey: {
 				type: String,
 				default: ""
+			},
+			unifiedMax: {
+				type: Number,
+				default: null
 			}
 		},
 
@@ -82,6 +95,7 @@
 			const pieContainer = ref(null);
 			const barContainer = ref(null);
 			const lineContainer = ref(null);
+			const stackedContainer = ref(null);
 
 			// 颜色定义
 			const colors = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12", "#9b59b6"];
@@ -98,6 +112,8 @@
 							return {
 								value: item.value ?? item.raw,
 								raw: item.raw,
+								...(item.label && { label: item.label }),
+								...(item.name && { name: item.name }),
 								...(item.unit && { unit: item.unit }),
 								...(item.currency && { currency: item.currency }),
 								...(item.year && { year: item.year })
@@ -112,6 +128,8 @@
 					return {
 						value: props.field.value ?? props.field.raw,
 						raw: props.field.raw,
+						...(props.field.label && { label: props.field.label }),
+						...(props.field.name && { name: props.field.name }),
 						...(props.field.unit && { unit: props.field.unit }),
 						...(props.field.currency && { currency: props.field.currency }),
 						...(props.field.year && { year: props.field.year })
@@ -125,7 +143,7 @@
 			// 初始化图表
 			onMounted(() => {
 				watch(
-					() => [processedField.value, props.visualization],
+					() => [processedField.value, props.visualization, props.unifiedMax],
 					() => {
 						nextTick(() => {
 							if (
@@ -141,6 +159,11 @@
 								hasData.value
 							) {
 								renderLineChart();
+							} else if (
+								props.visualization === "stacked-chart" &&
+								hasData.value
+							) {
+								renderStackedChart();
 							}
 						});
 					},
@@ -158,39 +181,47 @@
 				const container = d3.select(pieContainer.value);
 				const containerWidth = pieContainer.value.clientWidth;
 				const containerHeight = pieContainer.value.clientHeight;
-				const size = Math.min(containerWidth, containerHeight);
+
+				// 使用高度作为基准尺寸，确保饼图大小不变
+				const size = containerHeight * 0.9;
 				const radius = size / 2;
 
+				// 创建SVG，宽度100%，高度固定
 				const svg = container
 					.append("svg")
 					.attr("width", "100%")
 					.attr("height", "100%")
-					.attr("viewBox", `0 0 ${size} ${size}`)
+					.attr("viewBox", `0 0 ${containerWidth} ${containerHeight}`)
 					.append("g")
-					.attr("transform", `translate(${radius},${radius})`);
+					.attr(
+						"transform",
+						`translate(${containerWidth / 2}, ${containerHeight / 2})`
+					);
+
+				// 判断是否是单值饼图
+				const isSingleValue = props.fieldKey === "Inflation (CPI)";
 
 				// 处理数据 - 如果是单值，添加剩余部分
-				const processedData =
-					pieData.value.length === 1
-						? [
-								{
-									...pieData.value[0],
-									color: colors[0],
-									isMainValue: true
-								},
-								{
-									value: Math.max(0, 100 - pieData.value[0].value), // 确保不为负数
-									name: "剩余",
-									color: remainderColor,
-									isRemainder: true,
-									index: 1
-								}
-						  ]
-						: pieData.value.map((d, i) => ({
-								...d,
-								color: colors[i % colors.length],
+				const processedData = isSingleValue
+					? [
+							{
+								...pieData.value[0],
+								color: colors[0],
 								isMainValue: true
-						  }));
+							},
+							{
+								value: Math.max(0, 100 - pieData.value[0].value),
+								name: "剩余",
+								color: remainderColor,
+								isRemainder: true,
+								index: 1
+							}
+					  ]
+					: pieData.value.map((d, i) => ({
+							...d,
+							color: colors[i % colors.length],
+							isMainValue: true
+					  }));
 
 				const pie = d3
 					.pie()
@@ -210,6 +241,18 @@
 					.append("g")
 					.attr("class", "arc");
 
+				// 创建tooltip
+				const tooltip = container
+					.append("div")
+					.attr("class", "d3-tooltip")
+					.style("position", "absolute")
+					.style("visibility", "hidden")
+					.style("background", "rgba(0,0,0,0.8)")
+					.style("color", "white")
+					.style("padding", "6px 12px")
+					.style("border-radius", "4px")
+					.style("font-size", "12px");
+
 				// 绘制扇形
 				arcs
 					.append("path")
@@ -219,7 +262,7 @@
 					.style("stroke", "#fff")
 					.style("stroke-width", 1)
 					.on("mouseover", function (event, d) {
-						if (d.data.isRemainder) return; // 剩余部分不响应hover
+						if (d.data.isRemainder) return;
 
 						hoveredIndex.value = d.data.index;
 						d3.select(this)
@@ -235,6 +278,11 @@
 									props.type === "percentage" ? "%" : ""
 								}`
 							);
+					})
+					.on("mousemove", function (event) {
+						tooltip
+							.style("top", event.offsetY + 10 + "px")
+							.style("left", event.offsetX + 10 + "px");
 					})
 					.on("mouseout", function (event, d) {
 						if (d.data.isRemainder) return;
@@ -260,8 +308,8 @@
 						});
 					});
 
-				// 单值时的中心文字
-				if (pieData.value.length === 1) {
+				// 单值饼图的中心文字
+				if (isSingleValue) {
 					svg
 						.append("text")
 						.attr("text-anchor", "middle")
@@ -275,19 +323,41 @@
 						.style("fill", "#333");
 				}
 
-				// 创建tooltip
-				const tooltip = container
-					.append("div")
-					.attr("class", "d3-tooltip")
-					.style("position", "absolute")
-					.style("visibility", "hidden")
-					.style("background", "rgba(0,0,0,0.8)")
-					.style("color", "white")
-					.style("padding", "6px 12px")
-					.style("border-radius", "4px")
-					.style("font-size", "12px");
+				// 多值饼图的图例 - 修改为右上角放置
+				if (!isSingleValue && pieData.value.length > 1) {
+					const legend = svg.append("g").attr("class", "legend");
+					const legendItemSize = 12;
+					const legendSpacing = 4;
+					const legendStartX = containerWidth / 2 - 100;
+					const legendStartY = -containerHeight / 2 + 20;
+
+					pieData.value.forEach((d, i) => {
+						const legendItem = legend
+							.append("g")
+							.attr(
+								"transform",
+								`translate(${legendStartX}, ${
+									legendStartY + i * (legendItemSize + legendSpacing)
+								})`
+							);
+
+						legendItem
+							.append("rect")
+							.attr("width", legendItemSize)
+							.attr("height", legendItemSize)
+							.attr("fill", colors[i % colors.length]);
+
+						legendItem
+							.append("text")
+							.attr("x", legendItemSize + 4)
+							.attr("y", legendItemSize - 2)
+							.text(`${d.name}: ${d.value.toFixed(1)}%`)
+							.style("font-size", "10px")
+							.style("fill", "#333");
+					});
+				}
 			};
-			// 修改后的 renderBarChart 函数
+
 			const renderBarChart = () => {
 				if (!barContainer.value) return;
 
@@ -304,29 +374,38 @@
 					.attr("height", "100%")
 					.attr("viewBox", `0 0 ${width} ${height}`);
 
-				// 计算最大高度
-				const maxValue = d3.max(simpleBarData.value, d => d.value);
+				// 使用统一的最大值或计算最大值
+				const maxYValue =
+					props.unifiedMax !== null
+						? props.unifiedMax
+						: d3.max(simpleBarData.value, d => d.value) * 1.1 || 1;
+
+				// 确保最小值至少为0
+				const minYValue = Math.min(
+					0,
+					d3.min(simpleBarData.value, d => d.value) || 0
+				);
+
+				// 创建Y轴比例尺（但不绘制Y轴）
 				const y = d3
 					.scaleLinear()
-					.domain([0, maxValue])
+					.domain([minYValue, maxYValue])
 					.range([height - margin.bottom, margin.top]);
 
 				// 设定柱子最大宽度和最小间距
-				const maxBarWidth = 60; // 最大宽度60px
-				const minSpacing = 10; // 最小间距10px
-
-				// 动态计算实际使用的柱子宽度
-				const availableWidth = width - minSpacing * 2;
+				const maxBarWidth = 60;
+				const minSpacing = 10;
+				const availableWidth = width - margin.left - margin.right;
 				const barCount = simpleBarData.value.length;
 				const barWidth = Math.min(
 					maxBarWidth,
-					Math.max(20, availableWidth / barCount - minSpacing) // 最小宽度20px
+					Math.max(20, availableWidth / barCount - minSpacing)
 				);
 
 				// 计算起始位置使柱子居中
 				const totalBarsWidth =
 					barWidth * barCount + minSpacing * (barCount - 1);
-				const startX = (width - totalBarsWidth) / 2;
+				const startX = margin.left + (availableWidth - totalBarsWidth) / 2;
 
 				// 绘制柱子
 				svg
@@ -336,9 +415,9 @@
 					.append("rect")
 					.attr("class", "bar")
 					.attr("x", (d, i) => startX + i * (barWidth + minSpacing))
-					.attr("y", d => y(d.value))
+					.attr("y", d => y(Math.max(0, d.value)))
 					.attr("width", barWidth)
-					.attr("height", d => height - margin.bottom - y(d.value))
+					.attr("height", d => Math.abs(y(d.value) - y(0)))
 					.attr("fill", (d, i) => colors[i % colors.length])
 					.style("opacity", 0.8);
 
@@ -360,7 +439,6 @@
 					.text(d => formatNumber(d.value, props.fieldKey));
 			};
 
-			// 修改后的 renderLineChart 函数
 			const renderLineChart = () => {
 				if (!lineContainer.value) return;
 
@@ -432,6 +510,263 @@
 					.text(d => formatNumber(d.y, props.fieldKey));
 			};
 
+			const CATEGORY_COLORS = {
+				// 共有的类别
+				Machinery: "#8dd3c7", // 青绿色
+				"Mineral Fuels": "#ffffb3", // 淡黄色
+
+				// 左边独有
+				"Integrated Circuits": "#bebada", // 淡紫色
+				"Vehicles and their parts": "#fb8072", // 番茄红
+				Plastics: "#80b1d3", // 天蓝色
+				"Iron and Steel": "#fdb462", // 橙色
+				"Instruments and Apparatus": "#b3de69", // 亮绿
+				"Organic Chemicals": "#fccde5", // 粉红色
+
+				// 右边独有
+				"Transport Equipment": "#bc80bd", // 紫色
+				"Electrical Machinery": "#ccebc5", // 浅绿
+				Chemicals: "#ffed6f", // 明黄
+				"Manufactured Goods": "#bebada", // 淡紫色（改成不同于Others）
+
+				// 额外类别
+				"Raw Materials": "#8dd3c7", // 青绿色（改不同于Iron and Steel）
+				Foodstuff: "#ffb347", // 柑橘色（改掉重复）
+
+				// 其他
+				Others: "#a9a9a9" // 深灰色（改成不同于Manufactured Goods）
+			};
+
+			const renderStackedChart = () => {
+				if (!stackedContainer.value) {
+					console.error("Stacked container not found");
+					return;
+				}
+
+				// 过滤掉年份等无效条目，保留有效数据
+				const filteredData = processedField.value.filter(item => {
+					if (!item.raw) return false;
+					// 过滤形如(2019)或(2019)[14]这样的项
+					return !/^\(\d{4}\)(\[\d+\])?$/.test(item.raw.trim());
+				});
+
+				// 处理数据：提取名称，数值和颜色
+				const stackData = filteredData.map(item => {
+					const nameOnly = item.raw.replace(/\s*\d+(\.\d+)?%?$/, "").trim();
+					return {
+						name: nameOnly,
+						value: safeToNumber(item.value, props.fieldKey),
+						color: CATEGORY_COLORS[nameOnly] || "#cccccc" // 默认灰色
+					};
+				});
+
+				// 清空旧图
+				d3.select(stackedContainer.value).selectAll("*").remove();
+
+				const container = d3.select(stackedContainer.value);
+				const width = stackedContainer.value.clientWidth;
+				const height = stackedContainer.value.clientHeight;
+				const margin = { top: 20, right: 140, bottom: 20, left: 140 };
+
+				if (width <= 0 || height <= 0) {
+					console.error("Invalid container size");
+					return;
+				}
+
+				const svg = container
+					.append("svg")
+					.attr("width", "100%")
+					.attr("height", "100%")
+					.attr("viewBox", `0 0 ${width} ${height}`);
+
+				// Y比例尺，百分比堆叠，最大100%
+				const y = d3
+					.scaleLinear()
+					.domain([0, 100])
+					.range([height - margin.bottom, margin.top]);
+
+				// X比例尺，单一堆叠柱宽度
+				const x = d3
+					.scaleBand()
+					.domain([0])
+					.range([margin.left, width - margin.right])
+					.padding(0.4);
+
+				// 计算堆叠柱每段的y坐标和高度
+				let cumulative = 0;
+				const segments = stackData.map(d => {
+					const segment = {
+						...d,
+						y: y(cumulative + d.value),
+						height: y(cumulative) - y(cumulative + d.value),
+						x: x(0),
+						width: x.bandwidth()
+					};
+					cumulative += d.value;
+					return segment;
+				});
+
+				// 画堆叠柱块
+				svg
+					.selectAll(".stack-bar")
+					.data(segments)
+					.enter()
+					.append("rect")
+					.attr("class", "stack-bar")
+					.attr("x", d => d.x)
+					.attr("y", d => d.y)
+					.attr("width", d => d.width)
+					.attr("height", d => d.height)
+					.attr("fill", d => d.color)
+					.style("opacity", 0.8);
+
+				// 添加数值标签（带判断和斜线偏移）
+				svg
+					.selectAll(".stack-label")
+					.data(segments)
+					.enter()
+					.append("g")
+					.attr("class", "stack-label")
+					.each(function (d, i) {
+						const g = d3.select(this);
+
+						if (d.value == 0.8) {
+							// 小比例标签，右上角倾斜偏移放置
+							const labelX = d.x + d.width + 12;
+							const labelY = d.y - 18;
+
+							// 连线从堆叠块右上角往标签位置画
+							g.append("line")
+								.attr("x1", d.x + d.width)
+								.attr("y1", d.y)
+								.attr("x2", labelX - 4)
+								.attr("y2", labelY + 6)
+								.attr("stroke", "#666")
+								.attr("stroke-width", 1);
+
+							g.append("text")
+								.attr("x", labelX)
+								.attr("y", labelY)
+								.attr("text-anchor", "start")
+								.attr("font-size", "9px")
+								.attr("fill", "#222")
+								.text(d.value + "%");
+						} else {
+							const isLeft = i % 2 === 0;
+
+							if (isLeft) {
+								const labelX = d.x - 5;
+								const labelY = d.y + d.height / 2 + 4;
+
+								g.append("line")
+									.attr("x1", d.x)
+									.attr("y1", d.y + d.height / 2)
+									.attr("x2", labelX + 2)
+									.attr("y2", labelY - 4)
+									.attr("stroke", "#666")
+									.attr("stroke-width", 1);
+
+								g.append("text")
+									.attr("x", labelX)
+									.attr("y", labelY)
+									.attr("text-anchor", "end")
+									.attr("font-size", "9px")
+									.attr("fill", "#222")
+									.text(d.value + "%");
+							} else {
+								const labelX = d.x + d.width + 5;
+								const labelY = d.y + d.height / 2 + 4;
+
+								g.append("line")
+									.attr("x1", d.x + d.width)
+									.attr("y1", d.y + d.height / 2)
+									.attr("x2", labelX - 2)
+									.attr("y2", labelY - 4)
+									.attr("stroke", "#666")
+									.attr("stroke-width", 1);
+
+								g.append("text")
+									.attr("x", labelX)
+									.attr("y", labelY)
+									.attr("text-anchor", "start")
+									.attr("font-size", "9px")
+									.attr("fill", "#222")
+									.text(d.value + "%");
+							}
+						}
+					});
+
+				// 图例相关参数
+				const legendItemHeight = 18;
+				const legendFontSize = 9;
+				const legendLeftX = margin.left - 120;
+				const legendRightX = width - margin.right;
+				const legendYStart = margin.top;
+
+				// 左边5个图例
+				const leftLegend = stackData.slice(0, 5);
+				// 右边5个图例
+				const rightLegend = stackData.slice(5, 10);
+
+				// 画左边图例
+				svg
+					.selectAll(".legend-left")
+					.data(leftLegend)
+					.enter()
+					.append("g")
+					.attr("class", "legend-left")
+					.attr(
+						"transform",
+						(d, i) =>
+							`translate(${legendLeftX}, ${
+								legendYStart + i * legendItemHeight
+							})`
+					)
+					.each(function (d) {
+						const g = d3.select(this);
+						g.append("rect")
+							.attr("width", 12)
+							.attr("height", 12)
+							.attr("fill", d.color)
+							.style("opacity", 0.8);
+						g.append("text")
+							.attr("x", 18)
+							.attr("y", 10)
+							.attr("font-size", legendFontSize)
+							.attr("fill", "#333")
+							.text(d.name);
+					});
+
+				// 画右边图例
+				svg
+					.selectAll(".legend-right")
+					.data(rightLegend)
+					.enter()
+					.append("g")
+					.attr("class", "legend-right")
+					.attr(
+						"transform",
+						(d, i) =>
+							`translate(${legendRightX}, ${
+								legendYStart + i * legendItemHeight
+							})`
+					)
+					.each(function (d) {
+						const g = d3.select(this);
+						g.append("rect")
+							.attr("width", 12)
+							.attr("height", 12)
+							.attr("fill", d.color)
+							.style("opacity", 0.8);
+						g.append("text")
+							.attr("x", 18)
+							.attr("y", 10)
+							.attr("font-size", legendFontSize)
+							.attr("fill", "#333")
+							.text(d.name);
+					});
+			};
+
 			// 交互处理函数
 			const handleTextHover = () => {
 				isTextHovered.value = true;
@@ -493,7 +828,7 @@
 					item => !isYearEntry(item.name) && !isYearEntry(item.value)
 				);
 			});
-			// 修改后的 pieData 计算属性
+
 			const pieData = computed(() => {
 				if (!processedField.value) return [];
 
@@ -579,7 +914,6 @@
 				return 0;
 			};
 
-			// 修改后的 formatSimpleText 函数
 			const formatSimpleText = value => {
 				if (!value) return "-";
 
@@ -638,10 +972,9 @@
 
 				if (values.length === 0) return [];
 
-				const max = Math.max(...values, 1);
 				return values.map((v, index) => ({
 					value: v,
-					height: (v / max) * 100,
+					height: v,
 					color: colors[index % colors.length],
 					index: index
 				}));
@@ -704,6 +1037,7 @@
 				pieContainer,
 				barContainer,
 				lineContainer,
+				stackedContainer,
 				handleTextHover,
 				resetHover,
 				handleTextClick,
@@ -768,8 +1102,8 @@
 	/* D3图表容器 */
 	.d3-chart-container {
 		width: 100%;
-		height: 100%;
-		min-height: 80px;
+		height: 160px;
+		min-height: 120px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -791,6 +1125,17 @@
 		padding: 10px;
 	}
 
+	/* Y轴样式 */
+	.y-axis line {
+		stroke: #e0e0e0;
+		stroke-dasharray: 2, 2;
+	}
+
+	.y-axis text {
+		font-size: 10px;
+		fill: #666;
+	}
+
 	/* 响应式调整 */
 	@media (max-width: 768px) {
 		.simple-text {
@@ -804,7 +1149,8 @@
 
 	/* 添加在style部分的末尾 */
 	.bar-label,
-	.line-label {
+	.line-label,
+	.stack-label {
 		font-family: Arial, sans-serif;
 		pointer-events: none;
 		user-select: none;
@@ -812,7 +1158,8 @@
 
 	@media (max-width: 768px) {
 		.bar-label,
-		.line-label {
+		.line-label,
+		.stack-label {
 			font-size: 8px;
 		}
 	}

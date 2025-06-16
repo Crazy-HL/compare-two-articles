@@ -6,40 +6,6 @@
 			<p>正在准备数据对比...</p>
 		</div>
 
-		<!-- 排序热力图开关 -->
-		<div class="heatmap-control">
-			<button @click="showSortingHeatmap = !showSortingHeatmap">
-				{{ showSortingHeatmap ? "隐藏" : "显示" }}排序热力图
-			</button>
-		</div>
-
-		<!-- 排序热力图可视化 -->
-		<div class="sorting-heatmap" v-if="showSortingHeatmap">
-			<div class="heatmap-header">
-				<span>排序</span>
-				<span>属性</span>
-				<span>类型</span>
-				<span>差异分数</span>
-				<span>权重</span>
-			</div>
-			<div
-				class="heatmap-row"
-				v-for="(field, index) in sortedFieldsWithScores"
-				:key="field.key"
-				:style="{
-					backgroundColor: getHeatmapColor(field.score),
-					borderLeft: `4px solid ${getHeatmapColor(field.score)}`
-				}">
-				<span class="field-rank">{{ index + 1 }}</span>
-				<span class="field-name">{{ field.key }}</span>
-				<span class="field-type">{{ field.typeLabel }}</span>
-				<span class="field-score">{{ field.score.toFixed(1) }}</span>
-				<span class="field-weight">{{
-					getFieldWeight(field.key).toFixed(1)
-				}}</span>
-			</div>
-		</div>
-
 		<!-- 主对比表格 -->
 		<div class="comparison-grid">
 			<div class="header left-column">
@@ -56,10 +22,7 @@
 					@mouseover="hoverInfobox(leftInfobox, field.key, 'left')"
 					@mouseout="unhoverInfobox('left')"
 					@click="showFullChart(leftInfobox, field)">
-					<SimpleChart
-						:field="getField(leftInfobox, field.key)"
-						:type="field.type"
-						:visualization="field.visualization" />
+					<SimpleChart v-bind="getChartProps(leftInfobox, field)" />
 				</div>
 				<div
 					class="cell middle-column"
@@ -87,10 +50,7 @@
 					@mouseover="hoverInfobox(rightInfobox, field.key, 'right')"
 					@mouseout="unhoverInfobox('right')"
 					@click="showFullChart(rightInfobox, field)">
-					<SimpleChart
-						:field="getField(rightInfobox, field.key)"
-						:type="field.type"
-						:visualization="field.visualization" />
+					<SimpleChart v-bind="getChartProps(rightInfobox, field)" />
 				</div>
 			</template>
 		</div>
@@ -102,12 +62,20 @@
 			@click.self="closeFullChart">
 			<div class="modal-content">
 				<button class="close-btn" @click="closeFullChart">×</button>
-				<h3>{{ currentChart.title }} - {{ currentChart.field.key }}</h3>
+				<!-- <h3>{{ currentChart.title }}</h3> -->
 				<div class="chart-container">
-					<FullChart
-						:field="currentChart.data"
-						:type="currentChart.field.type"
-						:visualization="currentChart.field.visualization" />
+					<template v-if="currentChart.field.combined">
+						<CombinedChart
+							:data="currentChart.data"
+							:fieldKey="currentChart.field.key"
+							:sources="currentChart.field.sources" />
+					</template>
+					<template v-else>
+						<FullChart
+							:field="currentChart.data"
+							:type="currentChart.field.type"
+							:visualization="currentChart.field.visualization" />
+					</template>
 				</div>
 				<div class="chart-legend" v-if="currentChart.field.legend">
 					{{ currentChart.field.legend }}
@@ -121,6 +89,7 @@
 	import { ref, computed, onMounted, watch, onUnmounted } from "vue";
 	import SimpleChart from "./SimpleChart.vue";
 	import FullChart from "./FullChart.vue";
+	import CombinedChart from "./charts/CombinedChart.vue";
 	import bus from "@/js/eventBus.js";
 
 	const props = defineProps({
@@ -139,7 +108,6 @@
 		field: {},
 		data: []
 	});
-	const showSortingHeatmap = ref(true);
 	const isInitializing = ref(true);
 	const hasAutoCompared = ref(false);
 	const leftDataLoaded = ref(false);
@@ -147,7 +115,22 @@
 	const sortedFieldsWithScores = ref([]);
 
 	// 可比较字段配置
+	// 可比较字段配置（顺序即显示顺序）
 	const COMPARABLE_FIELDS = [
+		{
+			key: "GDP growth",
+			type: "percentage",
+			typeLabel: "百分比(%)",
+			visualization: "line-chart",
+			legend: "GDP年增长率（%）"
+		},
+		{
+			key: "Export goods",
+			type: "percentage",
+			typeLabel: "百分比(%)",
+			visualization: "stacked-chart",
+			legend: "主要出口商品构成（%）"
+		},
 		{
 			key: "GDP",
 			type: "number",
@@ -163,11 +146,11 @@
 			legend: "人口数量（单位：亿人）"
 		},
 		{
-			key: "GDP growth",
+			key: "Labor force by occupation",
 			type: "percentage",
 			typeLabel: "百分比(%)",
-			visualization: "line-chart",
-			legend: "GDP年增长率（%）"
+			visualization: "pie-chart",
+			legend: "按职业划分的劳动力"
 		},
 		{
 			key: "Inflation (CPI)",
@@ -176,14 +159,191 @@
 			visualization: "pie-chart",
 			legend: "消费者价格指数变化"
 		},
+
+		{
+			key: "Main export partners",
+			type: "percentage",
+			typeLabel: "百分比(%)",
+			visualization: "pie-chart",
+			legend: "按职业划分的劳动力"
+		},
 		{
 			key: "GDP rank",
 			type: "text",
 			typeLabel: "文本",
 			visualization: "text-only",
 			legend: "全球GDP排名"
+		},
+		{
+			key: "Main industries",
+			type: "percentage",
+			typeLabel: "百分比(%)",
+			visualization: "stacked-chart",
+			legend: "主要产业（%）"
+		},
+		{
+			key: "Main export partners",
+			type: "percentage",
+			typeLabel: "百分比(%)",
+			visualization: "stacked-chart",
+			legend: "主要出口伙伴（%）"
+		},
+		{
+			key: "GDP per capita",
+			type: "text",
+			typeLabel: "文本",
+			visualization: "text-only",
+			legend: "人均国内生产总值"
+		},
+		{
+			key: "Unemployment",
+			type: "text",
+			typeLabel: "文本",
+			visualization: "text-only",
+			legend: "失业"
+		},
+		{
+			key: "Unemployment",
+			type: "text",
+			typeLabel: "文本",
+			visualization: "text-only",
+			legend: "失业"
+		},
+		{
+			key: "Unemployment",
+			type: "text",
+			typeLabel: "文本",
+			visualization: "text-only",
+			legend: "失业"
+		},
+		{
+			key: "Unemployment",
+			type: "text",
+			typeLabel: "文本",
+			visualization: "text-only",
+			legend: "失业"
+		},
+		{
+			key: "Unemployment",
+			type: "text",
+			typeLabel: "文本",
+			visualization: "text-only",
+			legend: "失业"
+		},
+		{
+			key: "Unemployment",
+			type: "text",
+			typeLabel: "文本",
+			visualization: "text-only",
+			legend: "失业"
+		},
+		{
+			key: "Unemployment",
+			type: "text",
+			typeLabel: "文本",
+			visualization: "text-only",
+			legend: "失业"
+		},
+		{
+			key: "Unemployment",
+			type: "text",
+			typeLabel: "文本",
+			visualization: "text-only",
+			legend: "失业"
+		},
+		{
+			key: "Unemployment",
+			type: "text",
+			typeLabel: "文本",
+			visualization: "text-only",
+			legend: "失业"
+		},
+		{
+			key: "Unemployment",
+			type: "text",
+			typeLabel: "文本",
+			visualization: "text-only",
+			legend: "失业"
+		},
+		{
+			key: "Unemployment",
+			type: "text",
+			typeLabel: "文本",
+			visualization: "text-only",
+			legend: "失业"
+		},
+		{
+			key: "Unemployment",
+			type: "text",
+			typeLabel: "文本",
+			visualization: "text-only",
+			legend: "失业"
+		},
+		{
+			key: "Unemployment",
+			type: "text",
+			typeLabel: "文本",
+			visualization: "text-only",
+			legend: "失业"
+		},
+		{
+			key: "Unemployment",
+			type: "text",
+			typeLabel: "文本",
+			visualization: "text-only",
+			legend: "失业"
+		},
+		{
+			key: "Unemployment",
+			type: "text",
+			typeLabel: "文本",
+			visualization: "text-only",
+			legend: "失业"
+		},
+		{
+			key: "Unemployment",
+			type: "text",
+			typeLabel: "文本",
+			visualization: "text-only",
+			legend: "失业"
+		},
+		{
+			key: "Gini coefficient",
+			type: "text",
+			typeLabel: "文本",
+			visualization: "text-only",
+			legend: "基尼系数"
 		}
 	];
+
+	// 计算统一的最大值
+	const getUnifiedMaxValue = fieldKey => {
+		const leftValues = getField(leftInfobox.value, fieldKey)
+			.map(v => (typeof v === "object" ? v.value ?? v.raw : v))
+			.map(Number)
+			.filter(n => !isNaN(n));
+
+		const rightValues = getField(rightInfobox.value, fieldKey)
+			.map(v => (typeof v === "object" ? v.value ?? v.raw : v))
+			.map(Number)
+			.filter(n => !isNaN(n));
+
+		const leftMax = leftValues.length ? Math.max(...leftValues) : 0;
+		const rightMax = rightValues.length ? Math.max(...rightValues) : 0;
+
+		return Math.max(leftMax, rightMax) * 1.1 || 1;
+	};
+
+	// 获取图表props
+	const getChartProps = (infobox, field) => {
+		return {
+			field: getField(infobox, field.key),
+			type: field.type,
+			visualization: field.visualization,
+			unifiedMax: getUnifiedMaxValue(field.key),
+			fieldKey: field.key
+		};
+	};
 
 	// 自动对比方法
 	const tryAutoCompare = () => {
@@ -197,7 +357,6 @@
 		isInitializing.value = true;
 		hasAutoCompared.value = true;
 
-		// 找到分数最高的字段进行自动对比
 		const mostSignificantField = sortedFieldsWithScores.value[0];
 		if (mostSignificantField) {
 			emit("compareAttribute", {
@@ -215,31 +374,50 @@
 	};
 
 	const getField = (infobox, fieldKey) => {
-		if (!infobox?.data) {
-			return [];
+		if (!infobox?.data) return [];
+
+		const possibleKeys = [fieldKey];
+		if (fieldKey.includes("Labor")) {
+			possibleKeys.push(fieldKey.replace("Labor", "Labour"));
 		}
 
-		for (const section of Object.values(infobox.data)) {
-			if (section[fieldKey] !== undefined) {
-				const fieldData = section[fieldKey];
-
-				if (Array.isArray(fieldData)) {
-					return fieldData.map(item => {
-						if (typeof item === "object" && item !== null) {
-							return item.value ?? item.raw ?? item;
-						}
-						return item;
-					});
-				}
-
-				if (typeof fieldData === "object" && fieldData !== null) {
-					return [fieldData.value ?? fieldData.raw ?? fieldData];
-				}
-
-				return [fieldData];
+		const deepFind = (obj, keys) => {
+			for (const key of keys) {
+				if (obj[key] !== undefined) return obj[key];
 			}
+			for (const [k, v] of Object.entries(obj)) {
+				if (typeof v === "object" && v !== null) {
+					const found = deepFind(v, keys);
+					if (found !== undefined) return found;
+				}
+			}
+			return undefined;
+		};
+
+		let fieldData = deepFind(infobox.data, possibleKeys);
+		if (fieldData === undefined) return [];
+
+		// 特定处理：右侧职业数据为多行字符串的情况
+		if (
+			typeof fieldData === "string" &&
+			fieldKey.includes("Labor force by occupation")
+		) {
+			const lines = fieldData
+				.split("\n")
+				.map(line => line.trim())
+				.filter(Boolean);
+			fieldData = lines.map(line => {
+				const [occupation, percentage] = line.split(/[:：]/);
+				return {
+					label: occupation.trim(),
+					value: parseFloat(percentage),
+					raw: line
+				};
+			});
 		}
-		return [];
+
+		// 统一为数组对象
+		return Array.isArray(fieldData) ? fieldData : [fieldData];
 	};
 
 	const calculateDifferenceScore = field => {
@@ -258,7 +436,6 @@
 		}
 
 		let maxScore = 0;
-		const comparedPairs = [];
 
 		leftValues.forEach(leftNum => {
 			rightValues.forEach(rightNum => {
@@ -276,51 +453,17 @@
 					score = 10 + 40 * relativeDiff;
 				}
 
-				comparedPairs.push({
-					leftNum,
-					rightNum,
-					isOpposite,
-					relativeDiff,
-					score
-				});
-
 				if (score > maxScore) maxScore = score;
 			});
 		});
 
 		const weight = field.key.toLowerCase().includes("gdp growth") ? 3 : 1;
-		const finalScore = Math.min(100, Math.round(maxScore * weight));
-
-		return finalScore;
-	};
-
-	const getFieldWeight = fieldKey => {
-		const weights = {
-			GDP: 1.5,
-			Population: 1.3,
-			"GDP growth": 2.0,
-			Inflation: 1.8,
-			Labor: 1.2
-		};
-
-		for (const [key, weight] of Object.entries(weights)) {
-			if (fieldKey.toLowerCase().includes(key.toLowerCase())) {
-				return weight;
-			}
-		}
-
-		return 1.0;
-	};
-
-	const getHeatmapColor = score => {
-		const maxScore = 100;
-		const ratio = Math.min(score / maxScore, 1);
-		const hue = (1 - ratio) * 120;
-		return `hsl(${hue}, 80%, ${85 - ratio * 25}%)`;
+		return Math.min(100, Math.round(maxScore * weight));
 	};
 
 	const sortedFields = computed(() => {
-		return sortedFieldsWithScores.value;
+		// return sortedFieldsWithScores.value;
+		return comparableFields.value;
 	});
 
 	const comparableFields = computed(() => {
@@ -344,14 +487,13 @@
 					return b.score - a.score;
 				});
 
-			// 计算完成后尝试自动对比
 			tryAutoCompare();
 		}
 	};
 
 	const showFullChart = (infobox, field) => {
 		currentChart.value = {
-			title: infobox.title,
+			title: `${infobox.title} - ${field.key}`,
 			field: field,
 			data: getField(infobox, field.key)
 		};
@@ -367,15 +509,10 @@
 			fieldKey,
 			infoboxTitle: infobox.title
 		});
-
-		const divId = side === "left" ? "div1" : "div3";
-		bus.emit(`highlight-${divId}-paragraphs`, fieldKey);
 	};
 
 	const unhoverInfobox = side => {
 		bus.emit(`unhover-${side}-infobox`);
-		const divId = side === "left" ? "div1" : "div3";
-		bus.emit(`clear-${divId}-highlights`);
 	};
 
 	const hoverBothInfoboxes = fieldKey => {
@@ -398,19 +535,38 @@
 			fieldType: field.type,
 			fieldLabel: field.typeLabel
 		});
-
-		bus.emit("highlight-div1-paragraphs", field.key);
-		bus.emit("highlight-div3-paragraphs", field.key);
 	};
 
 	const showCombinedChart = field => {
 		const leftData = getField(leftInfobox.value, field.key);
 		const rightData = getField(rightInfobox.value, field.key);
 
+		// 合并两个数据源的数据并添加来源标识
+		const combinedData = [
+			...leftData.map(item => ({
+				...item,
+				source: leftInfobox.value.title,
+				sourceType: "left"
+			})),
+			...rightData.map(item => ({
+				...item,
+				source: rightInfobox.value.title,
+				sourceType: "right"
+			}))
+		];
+
 		currentChart.value = {
 			title: `合并图表 - ${field.key}`,
-			field: field,
-			data: [...leftData, ...rightData]
+			field: {
+				...field,
+				visualization: "line-chart",
+				combined: true,
+				sources: {
+					left: leftInfobox.value.title,
+					right: rightInfobox.value.title
+				}
+			},
+			data: combinedData
 		};
 		showFullChartModal.value = true;
 	};
@@ -457,6 +613,7 @@
 </script>
 
 <style scoped>
+	/* 原有样式保持不变 */
 	.compare-container {
 		width: 100%;
 		height: 100%;
@@ -503,74 +660,6 @@
 		}
 	}
 
-	.heatmap-control {
-		margin-bottom: 10px;
-		text-align: right;
-	}
-
-	.heatmap-control button {
-		padding: 6px 12px;
-		background: #2c3e50;
-		color: white;
-		border: none;
-		border-radius: 4px;
-		cursor: pointer;
-	}
-
-	.sorting-heatmap {
-		margin-bottom: 20px;
-		border: 1px solid #eee;
-		border-radius: 8px;
-		overflow: hidden;
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-	}
-
-	.heatmap-header {
-		display: grid;
-		grid-template-columns: 50px 2fr 1fr 1fr 1fr;
-		padding: 8px 12px;
-		background: #2c3e50;
-		color: white;
-		font-weight: bold;
-	}
-
-	.heatmap-row {
-		display: grid;
-		grid-template-columns: 50px 2fr 1fr 1fr 1fr;
-		padding: 8px 12px;
-		border-bottom: 1px solid #eee;
-		transition: all 0.3s;
-	}
-
-	.heatmap-row:hover {
-		transform: scale(1.01);
-		box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-	}
-
-	.field-rank {
-		font-weight: bold;
-		color: #2c3e50;
-	}
-
-	.field-name {
-		font-weight: bold;
-	}
-
-	.field-type {
-		color: #666;
-	}
-
-	.field-score {
-		text-align: right;
-		font-family: monospace;
-	}
-
-	.field-weight {
-		text-align: right;
-		font-family: monospace;
-		color: #666;
-	}
-
 	.comparison-grid {
 		display: grid;
 		grid-template-columns:
@@ -581,7 +670,7 @@
 		border: 1px solid #e0e0e0;
 		border-radius: 4px;
 		overflow: hidden;
-		max-height: 500px;
+		max-height: 1500px;
 		overflow-y: auto;
 	}
 
@@ -612,7 +701,7 @@
 
 	.cell {
 		padding: 8px;
-		height: 110px;
+		height: 150px;
 		border-bottom: 1px solid #e0e0e0;
 		display: flex;
 		flex-direction: column;

@@ -106,7 +106,7 @@
 		const saved = localStorage.getItem("chatHistory");
 		if (saved) {
 			try {
-				chatHistory.value = JSON.parse(saved);
+				// chatHistory.value = JSON.parse(saved);
 			} catch (e) {
 				console.error("加载聊天记录失败:", e);
 			}
@@ -311,9 +311,9 @@
 		try {
 			if (
 				currentFieldKey.value &&
-				question.includes("分析") &&
-				question.includes("原因")
+				question.includes("请结合其他属性深入分析得出上述结论的原因")
 			) {
+				// followUp: true
 				await api.post(
 					"compare_attributes",
 					{
@@ -331,47 +331,15 @@
 						previousAnalysis: getLastAnalysis()
 					},
 					response => {
-						const formattedAnswer = formatAnalysisResult(response.analysis);
-						const hasCausalFlow = response.analysis.includes("##");
-
+						// console.log("resp:", response.analysis);
+						const res = JSON.parse(response.analysis); // 关键点：将字符串转为对象
 						chatHistory.value.push({
 							role: "assistant",
-							content: hasCausalFlow ? "以下是因果分析：" : formattedAnswer,
-							isCausalFlow: hasCausalFlow,
-							causalChains: hasCausalFlow
-								? parseCausalChains(response.analysis)
-								: [],
+							content: "以下是因果分析：",
+							isCausalFlow: true,
+							causalChains: res,
 							timestamp: new Date().toLocaleString()
 						});
-						scrollToBottom();
-					},
-					error => {
-						throw error;
-					}
-				);
-			} else if (currentFieldKey.value && !question.includes("分析")) {
-				await api.post(
-					"compare_attributes",
-					{
-						chartData: {
-							leftData: leftData.value,
-							rightData: rightData.value,
-							leftTitle: "当前选择",
-							rightTitle: "对比选择",
-							fieldKey: currentFieldKey.value
-						},
-						chartType: "comparison",
-						followUp: false
-					},
-					response => {
-						const formattedAnswer = formatAnalysisResult(response.analysis);
-						chatHistory.value.push({
-							role: "assistant",
-							content: formattedAnswer,
-							timestamp: new Date().toLocaleString()
-						});
-						suggestedQuestion.value = `请结合其他属性深入分析${currentFieldKey.value}差异的原因`;
-						showSuggestedQuestion.value = true;
 						scrollToBottom();
 					},
 					error => {
@@ -379,6 +347,7 @@
 					}
 				);
 			} else {
+				// 处理一般问题
 				await api.post(
 					"ask_infobox",
 					{
@@ -476,6 +445,7 @@
 				"compare_attributes",
 				requestPayload,
 				response => {
+					console.log("resp:", response);
 					const formattedAnalysis = formatAnalysisResult(response.analysis);
 					chatHistory.value.push({
 						role: "assistant",
@@ -517,7 +487,7 @@
 
 	.chat-container {
 		height: 50vh;
-		min-height: 50vh;
+		min-height: 20vh;
 		overflow: hidden;
 		display: flex;
 		flex-direction: column;
@@ -536,8 +506,8 @@
 	}
 
 	.vis-container {
-		height: 30vh;
-		min-height: 30vh;
+		height: 70vh;
+		min-height: 50vh;
 		padding: 10px;
 		background: #ffffff;
 		border-radius: 12px;
@@ -553,8 +523,8 @@
 	}
 
 	.input-area {
-		height: 15vh;
-		min-height: 15vh;
+		height: 8vh;
+		min-height: 8vh;
 		padding: 15px;
 		background: #ffffff;
 		border-top: 1px solid #e0e0e0;
